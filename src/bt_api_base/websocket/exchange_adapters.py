@@ -8,12 +8,12 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-from importlib import import_module
 import json
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
+from importlib import import_module
 from typing import Any
 
 from bt_api_base.exceptions import AuthenticationError, RateLimitError

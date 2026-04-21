@@ -14,7 +14,6 @@ import websocket
 from bt_api_base.functions.utils import get_project_log_path
 from bt_api_base.logging_factory import get_logger
 
-
 _PROXY_ENV_KEYS = (
     "HTTPS_PROXY",
     "https_proxy",

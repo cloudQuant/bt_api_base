@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from importlib import import_module
 import warnings
+from importlib import import_module
 
 from bt_api_base.gateway.adapters.base import BaseGatewayAdapter
 from bt_api_base.gateway.adapters.plugin_adapter import PluginGatewayAdapter
@@ -32,23 +32,6 @@ def __getattr__(name: str):
                 stacklevel=2,
             )
             return NoopGatewayAdapter
-        raise AttributeError(name)
-    warnings.warn(
-        f"bt_api_base.gateway.adapters.{name} is deprecated; import from {module_name} instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    module = import_module(module_name)
-    return getattr(module, name)
-
-
-def __getattr__(name: str):
-    if name == "BaseGatewayAdapter":
-        return BaseGatewayAdapter
-    if name == "PluginGatewayAdapter":
-        return PluginGatewayAdapter
-    module_name = _ADAPTER_IMPORTS.get(name)
-    if module_name is None:
         raise AttributeError(name)
     warnings.warn(
         f"bt_api_base.gateway.adapters.{name} is deprecated; import from {module_name} instead.",

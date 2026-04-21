@@ -10,10 +10,10 @@ from bt_api_base.websocket.exchange_adapters import (
     ExchangeCredentials,
     ExchangeType,
     ExchangeWebSocketAdapter,
+    GenericWebSocketAdapter,
     OKXWebSocketAdapter,
     RateLimitConfig,
     WebSocketAdapterFactory,
-    GenericWebSocketAdapter,
 )
 
 
@@ -25,7 +25,7 @@ def __getattr__(name: str) -> Any:
             raise AttributeError(
                 "BinanceWebSocketAdapter is only available after installing bt_api_binance"
             ) from exc
-        return getattr(module, "BinanceWebSocketAdapter")
+        return module.BinanceWebSocketAdapter
     raise AttributeError(name)
 
 

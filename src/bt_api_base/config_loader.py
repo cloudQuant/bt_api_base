@@ -6,12 +6,12 @@
 
 from __future__ import annotations
 
+import warnings
 from contextlib import suppress
 from enum import unique
 from importlib import resources
 from pathlib import Path
 from typing import Any
-import warnings
 
 from bt_api_base._compat import StrEnum
 

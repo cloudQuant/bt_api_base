@@ -19,12 +19,11 @@ from urllib.parse import urlparse
 import websockets
 from websockets import ConnectionClosed, WebSocketException
 
-from bt_api_base.exceptions import WebSocketError, RateLimitError
-from bt_api_base.logging_factory import get_logger
-
 from bt_api_base.core.async_context import AsyncTaskGroup
 from bt_api_base.core.dependency_injection import inject, singleton
 from bt_api_base.core.interfaces import IConnectionManager, IEventBus
+from bt_api_base.exceptions import RateLimitError, WebSocketError
+from bt_api_base.logging_factory import get_logger
 
 
 @dataclass
