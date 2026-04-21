@@ -28,12 +28,18 @@ theme:
   plugins:
     - search
     - materialx
-    - bilingual:
-        default_language: en
+    - i18n:
+        docs_structure: suffix
+        fallback_to_default: true
+        reconfigure_material: true
+        reconfigure_search: true
         languages:
-          en: English
-          zh: 中文
-        navigation_depth: 3
+          en:
+            name: English
+            build: true
+          zh:
+            name: 中文
+            build: true
 
 nav:
   - Home: index.md
