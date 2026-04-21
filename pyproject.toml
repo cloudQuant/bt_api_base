@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bt_api_base"
-version = "0.15.1"
+version = "0.15.2"
 description = "Shared base abstractions for bt_api plugins"
 readme = "README.md"
 license = {text = "MIT"}
