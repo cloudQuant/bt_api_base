@@ -1,0 +1,59 @@
+site_name: "bt_api_base Documentation"
+site_description: "Shared base abstractions and interfaces for bt_api plugin ecosystem"
+site_author: cloudQuant
+site_url: https://bt-api-base.readthedocs.io/
+
+repo_name: cloudQuant/bt_api_base
+repo_url: https://github.com/cloudQuant/bt_api_base
+
+theme:
+  name: material
+  language: en
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+  plugins:
+    - search
+    - materialx
+    - bilingual:
+        default_language: en
+        languages:
+          en: English
+          zh: 中文
+        navigation_depth: 3
+
+nav:
+  - Home: index.md
+  - API Reference:
+    - Registry: api/registry.md
+    - Event Bus: api/event_bus.md
+    - WebSocket Manager: api/websocket_manager.md
+    - Cache: api/cache.md
+    - Rate Limiter: api/rate_limiter.md
+    - Exceptions: api/exceptions.md
+    - Config Loader: api/config_loader.md
+    - Feeds: api/feeds.md
+    - Containers: api/containers.md
+    - Gateway: api/gateway.md
+    - Plugins: api/plugins.md
+
+markdown_extensions:
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - admonition
+  - tables
+  - toc:
+      permalink: true
