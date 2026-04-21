@@ -429,28 +429,31 @@ class TestErrorTranslator:
 
 
 class TestErrorTranslatorImports:
-    """Tests for lazy translator imports."""
 
     def test_import_binance_translator(self):
         """Test importing BinanceErrorTranslator."""
+        pytest.importorskip("bt_api_binance")
         from bt_api_binance.errors.binance_translator import BinanceErrorTranslator
 
         assert BinanceErrorTranslator is not None
 
     def test_import_bybit_translator(self):
         """Test importing BybitErrorTranslator."""
+        pytest.importorskip("bt_api_bybit")
         from bt_api_bybit.errors.bybit_translator import BybitErrorTranslator
 
         assert BybitErrorTranslator is not None
 
     def test_import_bitget_translator(self):
         """Test importing BitgetErrorTranslator."""
+        pytest.importorskip("bt_api_bitget")
         from bt_api_bitget.errors.bitget_translator import BitgetErrorTranslator
 
         assert BitgetErrorTranslator is not None
 
     def test_import_bitfinex_translator(self):
         """Test importing BitfinexErrorTranslator."""
+        pytest.importorskip("bt_api_bitfinex")
         from bt_api_bitfinex.errors.bitfinex_translator import BitfinexErrorTranslator
 
         assert BitfinexErrorTranslator is not None
