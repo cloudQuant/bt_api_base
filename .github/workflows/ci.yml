@@ -75,7 +75,7 @@ jobs:
           pip install build
       - name: Install package
         run: pip install -e .
-      - name: Build package
+        run: pip install -e . && pip install pytest
         run: python -m build
       - name: Check dist
         run: |
@@ -96,7 +96,7 @@ jobs:
         run: pip install build twine
       - name: Install package
         run: pip install -e .
-      - name: Build
+        run: pip install -e . && pip install pytest
         run: python -m build
       - name: Publish to PyPI
         run: twine upload dist/* --skip-existing
