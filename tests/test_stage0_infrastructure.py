@@ -482,7 +482,12 @@ class TestRateLimiter:
         assert limiter.acquire("GET", "/api/v3/ticker")
 
     def test_sliding_window_basic(self):
-        from bt_api_base.rate_limiter import RateLimiter, RateLimitRule, RateLimitScope, RateLimitType
+        from bt_api_base.rate_limiter import (
+            RateLimiter,
+            RateLimitRule,
+            RateLimitScope,
+            RateLimitType,
+        )
 
         rules = [
             RateLimitRule(
@@ -500,7 +505,12 @@ class TestRateLimiter:
         assert not limiter.acquire()  # 4th should fail
 
     def test_fixed_window_basic(self):
-        from bt_api_base.rate_limiter import RateLimiter, RateLimitRule, RateLimitScope, RateLimitType
+        from bt_api_base.rate_limiter import (
+            RateLimiter,
+            RateLimitRule,
+            RateLimitScope,
+            RateLimitType,
+        )
 
         rules = [
             RateLimitRule(
@@ -517,7 +527,12 @@ class TestRateLimiter:
         assert not limiter.acquire()
 
     def test_endpoint_matching(self):
-        from bt_api_base.rate_limiter import RateLimiter, RateLimitRule, RateLimitScope, RateLimitType
+        from bt_api_base.rate_limiter import (
+            RateLimiter,
+            RateLimitRule,
+            RateLimitScope,
+            RateLimitType,
+        )
 
         rules = [
             RateLimitRule(
@@ -538,7 +553,12 @@ class TestRateLimiter:
         assert limiter.acquire("GET", "/api/v3/ticker")
 
     def test_weight_map(self):
-        from bt_api_base.rate_limiter import RateLimiter, RateLimitRule, RateLimitScope, RateLimitType
+        from bt_api_base.rate_limiter import (
+            RateLimiter,
+            RateLimitRule,
+            RateLimitScope,
+            RateLimitType,
+        )
 
         rules = [
             RateLimitRule(

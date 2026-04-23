@@ -7,6 +7,19 @@ name = "bt_api_base"
 version = "0.15.2"
 description = "Shared base abstractions for bt_api plugins"
 readme = "README.md"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+]
 license = {text = "MIT"}
 requires-python = ">=3.9"
 authors = [
@@ -79,6 +92,17 @@ ignore = [
     "B008",  # inject() in defaults is intentional DI pattern
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S106", "S105", "S311", "E402", "PERF401", "N806", "S108"]
+"examples/**" = ["S106", "S105", "S311", "E402", "PERF401", "N806", "S108"]
+"scripts/**" = ["S106", "S105", "S311", "E402", "PERF401", "N806", "S108"]
+
+
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
 [tool.mypy]
 python_version = "3.9"
 explicit_package_bases = true
@@ -88,3 +112,13 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "network: Tests requiring network access",
+    "kline: Kline/bar data tests",
+    "orderbook: Orderbook/depth data tests",
+    "ticker: Public ticker data tests",
+    "public_trade: Public trade data tests",
+    "auth_account: Authenticated account data tests",
+    "auth_order: Authenticated order tests",
+    "auth_position: Authenticated position tests",
+]
