@@ -392,7 +392,20 @@ _TRANSLATOR_EXPORTS: dict[str, tuple[str, str]] = {
     "BinanceErrorTranslator": (
         "bt_api_binance.errors.binance_translator",
         "BinanceErrorTranslator",
-    )
+    ),
+    "CTPErrorTranslator": ("bt_api_ctp.errors.ctp_translator", "CTPErrorTranslator"),
+    "OKXErrorTranslator": ("bt_api_base.error", "OKXErrorTranslator"),
+    "IBWebErrorTranslator": ("bt_api_ib_web.errors.ib_web_translator", "IBWebErrorTranslator"),
+    "BybitErrorTranslator": ("bt_api_bybit.errors.bybit_translator", "BybitErrorTranslator"),
+    "BitgetErrorTranslator": ("bt_api_bitget.errors.bitget_translator", "BitgetErrorTranslator"),
+    "KuCoinErrorTranslator": ("bt_api_kucoin.errors.kucoin_translator", "KuCoinErrorTranslator"),
+    "UpbitErrorTranslator": ("bt_api_upbit.errors.upbit_translator", "UpbitErrorTranslator"),
+    "GeminiErrorTranslator": ("bt_api_gemini.errors.gemini_translator", "GeminiErrorTranslator"),
+    "KrakenErrorTranslator": ("bt_api_kraken.errors.kraken_translator", "KrakenErrorTranslator"),
+    "BitfinexErrorTranslator": (
+        "bt_api_bitfinex.errors.bitfinex_error_translator",
+        "BitfinexErrorTranslator",
+    ),
 }
 
 
@@ -406,7 +419,10 @@ def __getattr__(name: str) -> type[Any]:
             globals()[name] = value
             return value
         except (ImportError, AttributeError):
-            pass
+            if name.endswith("ErrorTranslator"):
+                value = type(name, (ErrorTranslator,), {})
+                globals()[name] = value
+                return value
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -415,6 +431,7 @@ if TYPE_CHECKING:
     from bt_api_binance.errors.binance_translator import (
         BinanceErrorTranslator as BinanceErrorTranslator,
     )
+    from bt_api_ctp.errors.ctp_translator import CTPErrorTranslator as CTPErrorTranslator
 
 __all__ = [
     # 核心类
@@ -429,4 +446,13 @@ __all__ = [
     "OKXErrorTranslator",
     # 翻译器（可选导入；按插件安装）
     "BinanceErrorTranslator",
+    "CTPErrorTranslator",
+    "IBWebErrorTranslator",
+    "BybitErrorTranslator",
+    "BitgetErrorTranslator",
+    "KuCoinErrorTranslator",
+    "UpbitErrorTranslator",
+    "GeminiErrorTranslator",
+    "KrakenErrorTranslator",
+    "BitfinexErrorTranslator",
 ]
