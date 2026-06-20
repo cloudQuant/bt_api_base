@@ -31,5 +31,7 @@ jobs:
       - name: Build
         run: python -m build
       - name: Publish to PyPI
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || github.event.inputs.publish_target == 'pypi'
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
