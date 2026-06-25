@@ -3,6 +3,7 @@ from __future__ import annotations
 from bt_api_base.plugins.errors import (
     PluginError,
     PluginNotFoundError,
+    PluginOptionalDependencyError,
     PluginRegistrationError,
     PluginVersionMismatchError,
 )
@@ -14,6 +15,7 @@ __all__ = [
     "PluginInfo",
     "PluginLoader",
     "PluginNotFoundError",
+    "PluginOptionalDependencyError",
     "PluginRegistrationError",
     "PluginVersionMismatchError",
 ]
