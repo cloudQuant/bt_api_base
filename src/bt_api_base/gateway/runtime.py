@@ -4,6 +4,7 @@ import contextlib
 import logging
 import threading
 import time
+from collections import deque
 from typing import TYPE_CHECKING, Any
 
 import zmq
@@ -49,6 +50,9 @@ class GatewayRuntime:
         self.order_ref_allocator: OrderRefAllocator | None = None
         self.tick_writer: TickWriter | None = None
         self._last_runtime_heartbeat_monotonic = 0.0
+        self._recent_trades: deque[dict[str, Any]] = deque(
+            maxlen=max(int(kwargs.get("recent_trades_limit") or 1000), 1)
+        )
 
         if config.exchange_type == "CTP":
             state_dir = kwargs.get("state_dir") or config.base_dir or "/tmp/bt_gateway_state"  # nosec B108
@@ -211,6 +215,9 @@ class GatewayRuntime:
         request_id = str(payload.get("request_id") or "")
         command = str(payload.get("command") or "").lower()
         data = dict(payload.get("payload") or {})
+        if request_id:
+            data.setdefault("request_id", request_id)
+            data.setdefault("command_request_id", request_id)
         try:
             result = self._dispatch(command, data)
             response = {"request_id": request_id, "status": "ok", "data": result}
@@ -356,16 +363,32 @@ class GatewayRuntime:
             return self.adapter.get_balance()
         if command == "get_positions":
             return self.adapter.get_positions()
+        if command == "get_trades":
+            symbol = str(payload.get("symbol") or "").strip() or None
+            limit = int(payload.get("limit") or 100)
+            return self.get_trades(symbol=symbol, limit=limit)
         if command == "place_order":
             request_id = str(payload.get("request_id") or "")
             strategy_id = str(payload.get("strategy_id") or "default")
-            self.order_map.register(request_id, strategy_id, symbol=payload.get("symbol"))
+            client_order_id = self._order_text(
+                payload, "client_order_id", "order_ref", "bt_order_ref"
+            )
+            if client_order_id and not payload.get("client_order_id"):
+                payload["client_order_id"] = client_order_id
+            self.order_map.register(
+                request_id,
+                strategy_id,
+                client_order_id=client_order_id,
+                symbol=payload.get("symbol"),
+            )
             if self.order_ref_allocator is not None:
                 client_oid = self.order_ref_allocator.next()
                 self.order_map.set_client_order_id(request_id, client_oid)
                 payload["client_order_id"] = client_oid
             self.health.record_order()
-            return self.adapter.place_order(payload)
+            result = self.adapter.place_order(payload)
+            self._record_order_result_ids(request_id, payload, result)
+            return result
         if command == "cancel_order":
             return self.adapter.cancel_order(payload)
         if command == "get_bars":
@@ -379,6 +402,81 @@ class GatewayRuntime:
         if command == "get_open_orders":
             return self.adapter.get_open_orders()
         raise ValueError(f"unsupported command: {command}")
+
+    @staticmethod
+    def _order_text(row: dict[str, Any], *keys: str) -> str | None:
+        for key in keys:
+            value = row.get(key)
+            if value not in (None, ""):
+                return str(value).strip()
+        return None
+
+    @classmethod
+    def _nested_order_text(cls, row: dict[str, Any], *keys: str) -> str | None:
+        direct = cls._order_text(row, *keys)
+        if direct:
+            return direct
+        details = row.get("details")
+        if isinstance(details, dict):
+            return cls._order_text(details, *keys)
+        return None
+
+    def _record_order_result_ids(
+        self,
+        request_id: str,
+        payload: dict[str, Any],
+        result: Any,
+    ) -> None:
+        rows: list[dict[str, Any]] = []
+        if isinstance(result, dict):
+            rows.append(result)
+        elif isinstance(result, list):
+            rows.extend(item for item in result if isinstance(item, dict))
+        rows.append(payload)
+
+        client_order_id = next(
+            (
+                value
+                for row in rows
+                if (
+                    value := self._nested_order_text(
+                        row,
+                        "client_order_id",
+                        "order_ref",
+                        "bt_order_ref",
+                        "clOrdId",
+                        "clientOrderId",
+                        "OrderRef",
+                    )
+                )
+            ),
+            None,
+        )
+        if client_order_id:
+            self.order_map.set_client_order_id(request_id, client_order_id)
+
+        venue_order_id = next(
+            (
+                value
+                for row in rows
+                if (
+                    value := self._nested_order_text(
+                        row,
+                        "venue_order_id",
+                        "external_order_id",
+                        "order_id",
+                        "ordId",
+                        "OrderSysID",
+                        "orderSysId",
+                        "ticket",
+                        "id",
+                    )
+                )
+            ),
+            None,
+        )
+        if venue_order_id:
+            self.order_map.set_venue_order_id(request_id, venue_order_id)
 
     def _refresh_runtime_heartbeat(self, *, force: bool = False) -> None:
         if not self.running and not force:
@@ -399,7 +497,73 @@ class GatewayRuntime:
                 self.health.record_tick()
                 if self.tick_writer is not None and hasattr(payload, "symbol"):
                     self.tick_writer.write(payload)
+            elif channel == CHANNEL_EVENT:
+                payload = self._enrich_event_payload(payload)
+                self._record_trade_event(payload)
             self._publish(channel, payload)
+
+    def get_trades(self, symbol: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+        limit = max(int(limit or 100), 1)
+        getter = getattr(self.adapter, "get_trades", None)
+        if callable(getter):
+            try:
+                rows = getter(symbol=symbol, limit=limit)
+            except Exception as exc:
+                self.health.record_error("get_trades", f"{type(exc).__name__}: {exc}")
+                rows = []
+            if rows:
+                return self._filter_trade_rows(rows, symbol=symbol, limit=limit)
+        return self._filter_trade_rows(list(self._recent_trades), symbol=symbol, limit=limit)
+
+    def _record_trade_event(self, payload: Any) -> None:
+        if not isinstance(payload, dict):
+            return
+        if str(payload.get("kind") or "").strip().lower() != "trade":
+            return
+        self._recent_trades.append(dict(payload))
+
+    @classmethod
+    def _filter_trade_rows(
+        cls,
+        rows: Any,
+        *,
+        symbol: str | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        if not isinstance(rows, (list, tuple)):
+            return []
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if symbol and not cls._trade_symbol_matches(row, symbol):
+                continue
+            out.append(dict(row))
+        return out[-limit:]
+
+    @classmethod
+    def _trade_symbol_matches(cls, row: dict[str, Any], symbol: str) -> bool:
+        expected = cls._compact_symbol(symbol)
+        if not expected:
+            return True
+        for key in (
+            "symbol",
+            "data_name",
+            "instrument",
+            "instrument_id",
+            "InstrumentID",
+            "instId",
+            "position_symbol_name",
+            "symbol_name",
+        ):
+            value = cls._compact_symbol(str(row.get(key) or ""))
+            if value and value == expected:
+                return True
+        return False
+
+    @staticmethod
+    def _compact_symbol(symbol: str) -> str:
+        return "".join(ch for ch in str(symbol or "").upper() if ch.isalnum())
 
     def _sync_health_counts(self) -> None:
         self.health.update_counts(
@@ -418,6 +582,98 @@ class GatewayRuntime:
         except zmq.ZMQError:
             if self.running:
                 raise
+
+    def _enrich_event_payload(self, payload: Any) -> Any:
+        if not isinstance(payload, dict):
+            return payload
+        event = dict(payload)
+        entry = self._order_entry_for_event(event)
+        if entry is None:
+            return event
+
+        event.setdefault("strategy_id", entry.strategy_id)
+        event.setdefault("request_id", entry.request_id)
+        if entry.client_order_id:
+            event.setdefault("client_order_id", entry.client_order_id)
+        if entry.venue_order_id:
+            event.setdefault("venue_order_id", entry.venue_order_id)
+        if entry.symbol:
+            event.setdefault("symbol", entry.symbol)
+            event.setdefault("data_name", entry.symbol)
+
+        self._record_event_order_ids(entry, event)
+        status = str(event.get("status") or "").strip()
+        if status:
+            self.order_map.update_status(entry.request_id, status)
+        return event
+
+    def _order_entry_for_event(self, event: dict[str, Any]) -> Any:
+        for key in ("request_id", "command_request_id"):
+            value = self._nested_order_text(event, key)
+            if value:
+                entry = self.order_map.by_request(value)
+                if entry is not None:
+                    return entry
+
+        for key in (
+            "client_order_id",
+            "order_ref",
+            "bt_order_ref",
+            "ctp_order_ref",
+            "clOrdId",
+            "clientOrderId",
+            "OrderRef",
+        ):
+            value = self._nested_order_text(event, key)
+            if value:
+                entry = self.order_map.by_client(value)
+                if entry is not None:
+                    return entry
+
+        for key in (
+            "venue_order_id",
+            "external_order_id",
+            "order_id",
+            "ordId",
+            "OrderSysID",
+            "orderSysId",
+            "ticket",
+            "id",
+        ):
+            value = self._nested_order_text(event, key)
+            if value:
+                entry = self.order_map.by_venue(value)
+                if entry is not None:
+                    return entry
+        return None
+
+    def _record_event_order_ids(self, entry: Any, event: dict[str, Any]) -> None:
+        client_order_id = self._nested_order_text(
+            event,
+            "client_order_id",
+            "order_ref",
+            "bt_order_ref",
+            "ctp_order_ref",
+            "clOrdId",
+            "clientOrderId",
+            "OrderRef",
+        )
+        if client_order_id and client_order_id != entry.client_order_id:
+            self.order_map.set_client_order_id(entry.request_id, client_order_id)
+
+        venue_order_id = self._nested_order_text(
+            event,
+            "venue_order_id",
+            "external_order_id",
+            "order_id",
+            "ordId",
+            "OrderSysID",
+            "orderSysId",
+            "ticket",
+            "id",
+        )
+        if venue_order_id and venue_order_id != entry.venue_order_id:
+            self.order_map.set_venue_order_id(entry.request_id, venue_order_id)
 
     def _handle_runtime_failure(self, source: str, exc: Exception) -> None:
         self.running = False

@@ -46,6 +46,10 @@ class BaseGatewayAdapter(ABC):
         """Fetch current pending orders. Optional — default returns empty list."""
         return []
 
+    def get_trades(self, symbol: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+        """Fetch recent account trades/fills. Optional — default returns empty list."""
+        return []
+
     def poll_output(self) -> tuple[str, Any] | None:
         try:
             return self.output_queue.get_nowait()
