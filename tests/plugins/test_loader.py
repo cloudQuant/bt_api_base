@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from bt_api_base.gateway.registrar import GatewayRuntimeRegistrar
+from bt_api_base.plugins.errors import PluginOptionalDependencyError
 from bt_api_base.plugins.loader import PluginLoader
 from bt_api_base.plugins.protocol import PluginInfo
 from bt_api_base.registry import ExchangeRegistry
@@ -95,6 +96,23 @@ def test_plugin_loader_skips_import_error(monkeypatch):
 
     assert "broken" in loader.failed
     assert loader.loaded == {}
+
+
+def test_plugin_loader_records_optional_dependency_skip(monkeypatch, caplog):
+    def register_plugin(registry: Any, runtime_registrar: Any) -> PluginInfo:
+        raise PluginOptionalDependencyError("optional dependency missing: eth-account")
+
+    entry_point = _FakeEntryPoint("optional", "optional.plugin", register_plugin)
+    loader = PluginLoader(ExchangeRegistry, GatewayRuntimeRegistrar)
+    monkeypatch.setattr(loader, "_discover_entry_points", lambda group: [entry_point])
+
+    with caplog.at_level("INFO"):
+        loader.load_all()
+
+    assert "optional" in loader.skipped
+    assert loader.failed == {}
+    assert loader.loaded == {}
+    assert "plugin optional skipped" in caplog.text
 
 
 def test_plugin_loader_skips_version_mismatch(monkeypatch):

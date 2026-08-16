@@ -12,7 +12,13 @@ __all__ = [
     "PluginGatewayAdapter",
 ]
 
-_ADAPTER_IMPORTS = {}
+_ADAPTER_IMPORTS = {
+    "BinanceGatewayAdapter": "bt_api_binance.gateway.adapter",
+    "CtpGatewayAdapter": "bt_api_ctp.gateway.adapter",
+    "IbWebGatewayAdapter": "bt_api_ib_web.gateway.adapter",
+    "Mt5GatewayAdapter": "bt_api_mt5.gateway.adapter",
+    "OkxGatewayAdapter": "bt_api_okx.gateway.adapter",
+}
 
 
 class NoopGatewayAdapter(BaseGatewayAdapter):

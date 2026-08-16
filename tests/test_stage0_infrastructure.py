@@ -527,7 +527,12 @@ class TestRateLimiter:
 
     def test_sliding_window_basic(self):
         """test_sliding_window_basic method"""
-        from bt_api_base.rate_limiter import RateLimiter, RateLimitRule, RateLimitScope, RateLimitType
+        from bt_api_base.rate_limiter import (
+            RateLimiter,
+            RateLimitRule,
+            RateLimitScope,
+            RateLimitType,
+        )
 
         rules = [
             RateLimitRule(
@@ -546,7 +551,12 @@ class TestRateLimiter:
 
     def test_fixed_window_basic(self):
         """test_fixed_window_basic method"""
-        from bt_api_base.rate_limiter import RateLimiter, RateLimitRule, RateLimitScope, RateLimitType
+        from bt_api_base.rate_limiter import (
+            RateLimiter,
+            RateLimitRule,
+            RateLimitScope,
+            RateLimitType,
+        )
 
         rules = [
             RateLimitRule(
@@ -564,7 +574,12 @@ class TestRateLimiter:
 
     def test_endpoint_matching(self):
         """test_endpoint_matching method"""
-        from bt_api_base.rate_limiter import RateLimiter, RateLimitRule, RateLimitScope, RateLimitType
+        from bt_api_base.rate_limiter import (
+            RateLimiter,
+            RateLimitRule,
+            RateLimitScope,
+            RateLimitType,
+        )
 
         rules = [
             RateLimitRule(
@@ -586,7 +601,12 @@ class TestRateLimiter:
 
     def test_weight_map(self):
         """test_weight_map method"""
-        from bt_api_base.rate_limiter import RateLimiter, RateLimitRule, RateLimitScope, RateLimitType
+        from bt_api_base.rate_limiter import (
+            RateLimiter,
+            RateLimitRule,
+            RateLimitScope,
+            RateLimitType,
+        )
 
         rules = [
             RateLimitRule(

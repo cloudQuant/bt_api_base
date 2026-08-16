@@ -10,7 +10,11 @@ from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
 from bt_api_base._version import __version__
-from bt_api_base.plugins.errors import PluginRegistrationError, PluginVersionMismatchError
+from bt_api_base.plugins.errors import (
+    PluginOptionalDependencyError,
+    PluginRegistrationError,
+    PluginVersionMismatchError,
+)
 from bt_api_base.plugins.protocol import PluginInfo
 
 LOG_PREFIX = "[bt_api_base.plugins]"
@@ -54,6 +58,7 @@ class PluginLoader:
         self.runtime_registrar = runtime_registrar
         self.loaded: dict[str, PluginInfo] = {}
         self.failed: dict[str, Exception] = {}
+        self.skipped: dict[str, Exception] = {}
 
     @staticmethod
     def _failure_key(entry_name: str, info: Any) -> str:
@@ -98,6 +103,10 @@ class PluginLoader:
         )
         try:
             register_plugin = entry_point.load()
+        except PluginOptionalDependencyError as exc:
+            logger.info("%s plugin %s skipped: %s", LOG_PREFIX, entry_name, exc)
+            self.skipped[entry_name] = exc
+            return
         except ImportError as exc:
             logger.warning(
                 "%s plugin %s import failed: %s: %s",
@@ -128,6 +137,11 @@ class PluginLoader:
             self._check_duplicate_registration(info, isolated_runtime)
             self._commit_registry(isolated_registry)
             self._commit_runtime(isolated_runtime)
+        except PluginOptionalDependencyError as exc:
+            failure_key = self._failure_key(entry_name, info)
+            logger.info("%s plugin %s skipped: %s", LOG_PREFIX, entry_name, exc)
+            self.skipped[failure_key] = exc
+            return
         except PluginRegistrationError as exc:
             failure_key = self._failure_key(entry_name, info)
             log_fn = (

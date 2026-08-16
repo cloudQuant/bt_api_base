@@ -83,6 +83,12 @@ class PluginGatewayAdapter(BaseGatewayAdapter):
             return []
         return getter()
 
+    def get_trades(self, symbol: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+        getter = getattr(self.client, "get_trades", None)
+        if getter is None:
+            return []
+        return getter(symbol=symbol, limit=limit)
+
     def poll_output(self) -> tuple[str, Any] | None:
         """poll_output method"""
         item = self.client.poll_output()

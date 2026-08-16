@@ -20,3 +20,7 @@ class PluginVersionMismatchError(PluginError):
 class PluginRegistrationError(PluginError):
     """Class PluginRegistrationError"""
     pass
+
+
+class PluginOptionalDependencyError(PluginRegistrationError):
+    pass
