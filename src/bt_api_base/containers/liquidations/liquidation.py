@@ -11,6 +11,7 @@ class LiquidationData:
     """Base class for liquidation warning data."""
 
     def __init__(self, liquidation_info: Any, has_been_json_encoded: bool = False) -> None:
+        """__init__ method"""
         self.event = "LiquidationWarningEvent"
         self.liquidation_info = liquidation_info
         self.has_been_json_encoded = has_been_json_encoded
@@ -23,12 +24,15 @@ class LiquidationData:
         self.all_data: dict[str, Any] | None = None
 
     def get_event(self) -> str:
+        """get_event method"""
         return self.event
 
     def init_data(self) -> None | Self:
+        """init_data method"""
         raise NotImplementedError
 
     def get_all_data(self) -> dict[str, Any]:
+        """get_all_data method"""
         if self.all_data is None:
             self.all_data = {
                 "exchange_name": self.exchange_name,
@@ -40,18 +44,23 @@ class LiquidationData:
         return self.all_data
 
     def get_exchange_name(self) -> str:
+        """get_exchange_name method"""
         raise NotImplementedError
 
     def get_asset_type(self) -> str | None:
+        """get_asset_type method"""
         raise NotImplementedError
 
     def get_symbol_name(self) -> str | None:
+        """get_symbol_name method"""
         raise NotImplementedError
 
     def get_server_time(self) -> float | None:
+        """get_server_time method"""
         raise NotImplementedError
 
     def get_local_update_time(self) -> float | None:
+        """get_local_update_time method"""
         raise NotImplementedError
 
     def __str__(self) -> str:

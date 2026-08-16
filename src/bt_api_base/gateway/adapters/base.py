@@ -1,3 +1,4 @@
+"""Module-level docstring."""
 from __future__ import annotations
 
 import queue
@@ -8,31 +9,47 @@ from bt_api_base.logging_factory import get_logger
 
 
 class BaseGatewayAdapter(ABC):
+    """Class BaseGatewayAdapter"""
     def __init__(self, **kwargs: Any) -> None:
+        """__init__ method"""
         self.kwargs = dict(kwargs)
         self.output_queue: queue.Queue[tuple[str, Any]] = queue.Queue()
         self.logger = get_logger("gateway")
 
     @abstractmethod
-    def connect(self) -> None: ...
+    def connect(self) -> None:
+        """connect method"""
+        ...
 
     @abstractmethod
-    def disconnect(self) -> None: ...
+    def disconnect(self) -> None:
+        """disconnect method"""
+        ...
 
     @abstractmethod
-    def subscribe_symbols(self, symbols: list[str]) -> dict[str, Any]: ...
+    def subscribe_symbols(self, symbols: list[str]) -> dict[str, Any]:
+        """subscribe_symbols method"""
+        ...
 
     @abstractmethod
-    def get_balance(self) -> dict[str, Any]: ...
+    def get_balance(self) -> dict[str, Any]:
+        """get_balance method"""
+        ...
 
     @abstractmethod
-    def get_positions(self) -> list[dict[str, Any]]: ...
+    def get_positions(self) -> list[dict[str, Any]]:
+        """get_positions method"""
+        ...
 
     @abstractmethod
-    def place_order(self, payload: dict[str, Any]) -> dict[str, Any]: ...
+    def place_order(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """place_order method"""
+        ...
 
     @abstractmethod
-    def cancel_order(self, payload: dict[str, Any]) -> dict[str, Any]: ...
+    def cancel_order(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """cancel_order method"""
+        ...
 
     def get_bars(self, symbol: str, timeframe: str, count: int) -> list[dict[str, Any]]:
         """Fetch historical OHLCV bars. Optional — default returns empty list."""
@@ -47,10 +64,11 @@ class BaseGatewayAdapter(ABC):
         return []
 
     def poll_output(self) -> tuple[str, Any] | None:
-        try:
-            return self.output_queue.get_nowait()
+        """poll_output method"""
+        try: return self.output_queue.get_nowait()
         except queue.Empty:
             return None
 
     def emit(self, channel: str, payload: Any) -> None:
+        """emit method"""
         self.output_queue.put((channel, payload))

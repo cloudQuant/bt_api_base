@@ -1,7 +1,7 @@
-"""统一限流器.
+""".
 
-支持滑动窗口、固定窗口两种限流模式，以及端点级 glob 匹配和权重映射。
-对非 HTTP 场所可关闭或替换为场所内置流控。
+、， glob 。
+ HTTP 。
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ __all__ = [
 
 @unique
 class RateLimitType(StrEnum):
+    """Class RateLimitType"""
     SLIDING_WINDOW = "sliding_window"
     FIXED_WINDOW = "fixed_window"
     TOKEN_BUCKET = "token_bucket"
@@ -37,6 +38,7 @@ class RateLimitType(StrEnum):
 
 @unique
 class RateLimitScope(StrEnum):
+    """Class RateLimitScope"""
     GLOBAL = "global"
     ENDPOINT = "endpoint"
     IP = "ip"
@@ -44,19 +46,19 @@ class RateLimitScope(StrEnum):
 
 @dataclass
 class RateLimitRule:
-    """限流规则."""
+    """."""
 
     name: str
     type: RateLimitType
-    interval: int  # 时间窗口（秒）
-    limit: int  # 限制数量
+    interval: int  # （）
+    limit: int  # 
     scope: RateLimitScope = RateLimitScope.GLOBAL
-    endpoint: str | None = None  # 端点匹配（支持 glob）
+    endpoint: str | None = None  # （ glob）
     weight_map: dict[str, int] | None = None  # {method_or_key: weight}
-    weight: int = 1  # 默认权重
+    weight: int = 1  # 
 
     def match(self, method: str, path: str) -> bool:
-        """判断请求是否匹配此规则."""
+        """."""
         if self.scope == RateLimitScope.GLOBAL:
             return True
         if self.scope == RateLimitScope.ENDPOINT and self.endpoint:
@@ -64,7 +66,7 @@ class RateLimitRule:
         return False
 
     def get_weight(self, method: str, path: str) -> int:
-        """获取请求权重."""
+        """."""
         if self.weight_map:
             key = f"{method} {path}"
             if key in self.weight_map:
@@ -75,9 +77,10 @@ class RateLimitRule:
 
 
 class SlidingWindowLimiter:
-    """滑动窗口限流器."""
+    """."""
 
     def __init__(self, interval: int, limit: int) -> None:
+        """__init__ method"""
         self.interval = interval
         self.limit = limit
         self._requests: deque[tuple[float, int]] = deque()
@@ -89,6 +92,7 @@ class SlidingWindowLimiter:
             self._requests.popleft()
 
     def acquire(self, weight: int = 1) -> bool:
+        """acquire method"""
         with self._lock:
             now = time.time()
             self._prune_expired_locked(now)
@@ -99,6 +103,7 @@ class SlidingWindowLimiter:
             return False
 
     def release(self, weight: int = 1) -> None:
+        """release method"""
         with self._lock:
             now = time.time()
             self._prune_expired_locked(now)
@@ -106,6 +111,7 @@ class SlidingWindowLimiter:
                 self._requests.pop()
 
     def wait_time(self) -> float:
+        """wait_time method"""
         with self._lock:
             if not self._requests:
                 return 0.0
@@ -114,6 +120,7 @@ class SlidingWindowLimiter:
 
     @property
     def current_usage(self) -> int:
+        """current_usage method"""
         with self._lock:
             now = time.time()
             self._prune_expired_locked(now)
@@ -121,9 +128,10 @@ class SlidingWindowLimiter:
 
 
 class FixedWindowLimiter:
-    """固定窗口限流器."""
+    """."""
 
     def __init__(self, interval: int, limit: int) -> None:
+        """__init__ method"""
         self.interval = interval
         self.limit = limit
         self._window_start = 0.0
@@ -131,6 +139,7 @@ class FixedWindowLimiter:
         self._lock = threading.Lock()
 
     def acquire(self, weight: int = 1) -> bool:
+        """acquire method"""
         with self._lock:
             now = time.time()
             window_start = int(now // self.interval) * self.interval
@@ -145,10 +154,12 @@ class FixedWindowLimiter:
             return False
 
     def release(self, weight: int = 1) -> None:
+        """release method"""
         with self._lock:
             self._window_count = max(0, self._window_count - weight)
 
     def wait_time(self) -> float:
+        """wait_time method"""
         with self._lock:
             now = time.time()
             window_end = self._window_start + self.interval
@@ -156,14 +167,15 @@ class FixedWindowLimiter:
 
     @property
     def current_usage(self) -> int:
+        """current_usage method"""
         with self._lock:
             return self._window_count
 
 
 class RateLimiter:
-    """统一限流器.
+    """.
 
-    使用方式::
+    ::
 
         rules = [
             RateLimitRule(name="global", type=RateLimitType.SLIDING_WINDOW,
@@ -175,23 +187,24 @@ class RateLimiter:
         ]
         limiter = RateLimiter(rules)
 
-        # 同步使用
+        # 
         if limiter.acquire("POST", "/api/v3/order"):
-            # 发送请求
+            # 
             ...
         else:
             limiter.wait_and_acquire("POST", "/api/v3/order")
 
-        # 异步使用
+        # 
         await limiter.async_acquire("POST", "/api/v3/order")
 
-        # 上下文管理器使用（自动等待并获取许可）
+        # （）
         with limiter:
-            # 发送请求
+            # 
             ...
     """
 
     def __init__(self, rules: list[RateLimitRule] | None = None) -> None:
+        """__init__ method"""
         self.rules = rules or []
         self._limiters: dict[str, Any] = {}
         self._lock = threading.Lock()
@@ -214,7 +227,7 @@ class RateLimiter:
         return max_wait
 
     def __enter__(self) -> RateLimiter:
-        """进入上下文管理器（阻塞等待获取许可）."""
+        """（）."""
         return self
 
     def __exit__(
@@ -223,11 +236,11 @@ class RateLimiter:
         exc_val: BaseException | None,
         exc_tb: Any,
     ) -> Literal[False]:
-        """退出上下文管理器."""
+        """."""
         return False
 
     def acquire(self, method: str = "", path: str = "", weight: int = 1) -> bool:
-        """同步获取限流许可（不阻塞）."""
+        """（）."""
         if not self.rules:
             return True
 
@@ -259,7 +272,7 @@ class RateLimiter:
         weight: int = 1,
         timeout: float | None = None,
     ) -> bool:
-        """同步阻塞获取许可."""
+        """."""
         start = time.monotonic()
         while True:
             if self.acquire(method, path, weight):
@@ -277,7 +290,7 @@ class RateLimiter:
         weight: int = 1,
         timeout: float | None = None,
     ) -> bool:
-        """异步获取限流许可（自动等待）."""
+        """（）."""
         start = time.monotonic()
         while True:
             if self.acquire(method, path, weight):
@@ -290,7 +303,7 @@ class RateLimiter:
                 await asyncio.wait_for(asyncio.Event().wait(), timeout=effective_wait)
 
     def get_status(self) -> dict[str, dict]:
-        """获取各限流器状态（用于监控）."""
+        """（）."""
         status = {}
         for rule in self.rules:
             limiter = self._limiters.get(rule.name)

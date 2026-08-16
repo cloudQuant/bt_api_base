@@ -1,3 +1,4 @@
+"""Module-level docstring."""
 from __future__ import annotations
 
 from typing import Any
@@ -8,21 +9,19 @@ from bt_api_base.containers.auto_init_mixin import AutoInitMixin
 
 class BalanceData(AutoInitMixin):
     """
-    用于保存账户的余额.
+    .
 
-    用于存储和访问账户余额信息的基类。
+    。
     """
 
     def __init__(self, balance_info: Any, has_been_json_encoded: bool = False) -> None:
         """
         Initialize balance data.
 
-        Args:
-            balance_info: Balance information dictionary.
+        Args: balance_info: Balance information dictionary.
             has_been_json_encoded: Whether data has been JSON encoded.
 
-        Returns:
-            None
+        Returns: None
         """
         self.event = "BalanceEvent"
         self.balance_info = balance_info
@@ -32,8 +31,7 @@ class BalanceData(AutoInitMixin):
         """
         Get event type.
 
-        Returns:
-            Event type string.
+        Returns: Event type string.
         """
         return self.event
 
@@ -41,11 +39,9 @@ class BalanceData(AutoInitMixin):
         """
         Initialize data from balance_info.
 
-        Returns:
-            Self for method chaining, or None.
+        Returns: Self for method chaining, or None.
 
-        Raises:
-            NotImplementedError: Must be implemented by subclass.
+        Raises: NotImplementedError: Must be implemented by subclass.
         """
         raise NotImplementedError
 
@@ -53,11 +49,9 @@ class BalanceData(AutoInitMixin):
         """
         Get all balance data as dictionary.
 
-        Raises:
-            NotImplementedError: Must be implemented by subclass.
+        Raises: NotImplementedError: Must be implemented by subclass.
 
-        Returns:
-            Dictionary containing all balance data.
+        Returns: Dictionary containing all balance data.
         """
         raise NotImplementedError
 
@@ -65,11 +59,9 @@ class BalanceData(AutoInitMixin):
         """
         Get exchange name.
 
-        Raises:
-            NotImplementedError: Must be implemented by subclass.
+        Raises: NotImplementedError: Must be implemented by subclass.
 
-        Returns:
-            Exchange name string.
+        Returns: Exchange name string.
         """
         raise NotImplementedError
 
@@ -77,11 +69,9 @@ class BalanceData(AutoInitMixin):
         """
         Get asset type.
 
-        Raises:
-            NotImplementedError: Must be implemented by subclass.
+        Raises: NotImplementedError: Must be implemented by subclass.
 
-        Returns:
-            Asset type string.
+        Returns: Asset type string.
         """
         raise NotImplementedError
 
@@ -89,11 +79,9 @@ class BalanceData(AutoInitMixin):
         """
         Get server timestamp.
 
-        Raises:
-            NotImplementedError: Must be implemented by subclass.
+        Raises: NotImplementedError: Must be implemented by subclass.
 
-        Returns:
-            Server timestamp or None if not available.
+        Returns: Server timestamp or None if not available.
         """
         raise NotImplementedError
 
@@ -101,11 +89,9 @@ class BalanceData(AutoInitMixin):
         """
         Get local update timestamp.
 
-        Raises:
-            NotImplementedError: Must be implemented by subclass.
+        Raises: NotImplementedError: Must be implemented by subclass.
 
-        Returns:
-            Local update timestamp.
+        Returns: Local update timestamp.
         """
         raise NotImplementedError
 
@@ -113,11 +99,9 @@ class BalanceData(AutoInitMixin):
         """
         Get account ID.
 
-        Raises:
-            NotImplementedError: Must be implemented by subclass.
+        Raises: NotImplementedError: Must be implemented by subclass.
 
-        Returns:
-            Account ID string or None.
+        Returns: Account ID string or None.
         """
         raise NotImplementedError
 
@@ -125,11 +109,9 @@ class BalanceData(AutoInitMixin):
         """
         Get account type.
 
-        Raises:
-            NotImplementedError: Must be implemented by subclass.
+        Raises: NotImplementedError: Must be implemented by subclass.
 
-        Returns:
-            Account type string or None.
+        Returns: Account type string or None.
         """
         raise NotImplementedError
 
@@ -137,11 +119,9 @@ class BalanceData(AutoInitMixin):
         """
         Get fee tier level.
 
-        Raises:
-            NotImplementedError: Must be implemented by subclass.
+        Raises: NotImplementedError: Must be implemented by subclass.
 
-        Returns:
-            Fee tier level (int or str) or None.
+        Returns: Fee tier level (int or str) or None.
         """
         raise NotImplementedError
 
@@ -149,11 +129,9 @@ class BalanceData(AutoInitMixin):
         """
         Get maximum withdrawable amount.
 
-        Raises:
-            NotImplementedError: Must be implemented by subclass.
+        Raises: NotImplementedError: Must be implemented by subclass.
 
-        Returns:
-            Maximum withdrawable amount or None.
+        Returns: Maximum withdrawable amount or None.
         """
         raise NotImplementedError
 
@@ -161,11 +139,9 @@ class BalanceData(AutoInitMixin):
         """
         Get total margin.
 
-        Raises:
-            NotImplementedError: Must be implemented by subclass.
+        Raises: NotImplementedError: Must be implemented by subclass.
 
-        Returns:
-            Total margin amount or None.
+        Returns: Total margin amount or None.
         """
         raise NotImplementedError
 
@@ -173,11 +149,9 @@ class BalanceData(AutoInitMixin):
         """
         Get used margin.
 
-        Raises:
-            NotImplementedError: Must be implemented by subclass.
+        Raises: NotImplementedError: Must be implemented by subclass.
 
-        Returns:
-            Used margin amount or None.
+        Returns: Used margin amount or None.
         """
         raise NotImplementedError
 
@@ -185,11 +159,9 @@ class BalanceData(AutoInitMixin):
         """
         Get maintenance margin.
 
-        Raises:
-            NotImplementedError: Must be implemented by subclass.
+        Raises: NotImplementedError: Must be implemented by subclass.
 
-        Returns:
-            Maintenance margin amount or None.
+        Returns: Maintenance margin amount or None.
         """
         raise NotImplementedError
 
@@ -197,11 +169,9 @@ class BalanceData(AutoInitMixin):
         """
         Get available margin.
 
-        Raises:
-            NotImplementedError: Must be implemented by subclass.
+        Raises: NotImplementedError: Must be implemented by subclass.
 
-        Returns:
-            Available margin amount or None.
+        Returns: Available margin amount or None.
         """
         raise NotImplementedError
 
@@ -209,11 +179,9 @@ class BalanceData(AutoInitMixin):
         """
         Get open order initial margin.
 
-        Raises:
-            NotImplementedError: Must be implemented by subclass.
+        Raises: NotImplementedError: Must be implemented by subclass.
 
-        Returns:
-            Open order initial margin amount or None.
+        Returns: Open order initial margin amount or None.
         """
         raise NotImplementedError
 
@@ -221,11 +189,9 @@ class BalanceData(AutoInitMixin):
         """
         Get open order maintenance margin.
 
-        Raises:
-            NotImplementedError: Must be implemented by subclass.
+        Raises: NotImplementedError: Must be implemented by subclass.
 
-        Returns:
-            Open order maintenance margin amount or None.
+        Returns: Open order maintenance margin amount or None.
         """
         raise NotImplementedError
 
@@ -233,11 +199,9 @@ class BalanceData(AutoInitMixin):
         """
         Get unrealized profit.
 
-        Raises:
-            NotImplementedError: Must be implemented by subclass.
+        Raises: NotImplementedError: Must be implemented by subclass.
 
-        Returns:
-            Unrealized profit amount or None.
+        Returns: Unrealized profit amount or None.
         """
         raise NotImplementedError
 
@@ -245,11 +209,9 @@ class BalanceData(AutoInitMixin):
         """
         Get interest amount.
 
-        Raises:
-            NotImplementedError: Must be implemented by subclass.
+        Raises: NotImplementedError: Must be implemented by subclass.
 
-        Returns:
-            Interest amount or None.
+        Returns: Interest amount or None.
         """
         raise NotImplementedError
 

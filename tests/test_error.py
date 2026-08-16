@@ -333,6 +333,7 @@ class TestErrorTranslator:
         """Test translation using ERROR_MAP."""
 
         class CustomTranslator(ErrorTranslator):
+            """Class CustomTranslator"""
             ERROR_MAP = {
                 "INVALID_SYMBOL": (UnifiedErrorCode.INVALID_SYMBOL, "Symbol not found"),
             }
@@ -351,6 +352,7 @@ class TestErrorTranslator:
         """Test translation when ERROR_MAP returns None (not an error)."""
 
         class CustomTranslator(ErrorTranslator):
+            """Class CustomTranslator"""
             ERROR_MAP = {
                 0: (None, "Success"),
             }
@@ -430,6 +432,7 @@ class TestErrorTranslator:
 
 class TestErrorTranslatorImports:
 
+    """Class TestErrorTranslatorImports"""
     def test_import_binance_translator(self):
         """Test importing BinanceErrorTranslator."""
         pytest.importorskip("bt_api_binance")

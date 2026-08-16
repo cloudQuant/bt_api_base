@@ -1,3 +1,4 @@
+"""Module-level docstring."""
 from __future__ import annotations
 
 from typing import Any
@@ -14,6 +15,7 @@ class PluginGatewayAdapter(BaseGatewayAdapter):
     _LOCAL_ATTRS = {"client", "direct_client_cls", "kwargs", "logger", "output_queue"}
 
     def __init__(self, direct_client_cls: type[Any] | None = None, **kwargs: Any) -> None:
+        """__init__ method"""
         client_cls = direct_client_cls or self.direct_client_cls
         if client_cls is None:
             raise ValueError("direct_client_cls must be provided")
@@ -33,45 +35,56 @@ class PluginGatewayAdapter(BaseGatewayAdapter):
         super().__setattr__(name, value)
 
     def connect(self) -> None:
+        """connect method"""
         self.client.connect()
 
     def disconnect(self) -> None:
+        """disconnect method"""
         self.client.disconnect()
 
     def subscribe_symbols(self, symbols: list[str]) -> dict[str, Any]:
+        """subscribe_symbols method"""
         return self.client.subscribe_symbols(symbols)
 
     def get_balance(self) -> dict[str, Any]:
+        """get_balance method"""
         return self.client.get_balance()
 
     def get_positions(self) -> list[dict[str, Any]]:
+        """get_positions method"""
         return self.client.get_positions()
 
     def place_order(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """place_order method"""
         return self.client.place_order(payload)
 
     def cancel_order(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """cancel_order method"""
         return self.client.cancel_order(payload)
 
     def get_bars(self, symbol: str, timeframe: str, count: int) -> list[dict[str, Any]]:
+        """get_bars method"""
         getter = getattr(self.client, "get_bars", None)
         if getter is None:
             return []
         return getter(symbol, timeframe, count)
 
     def get_symbol_info(self, symbol: str) -> dict[str, Any]:
+        """get_symbol_info method"""
         getter = getattr(self.client, "get_symbol_info", None)
         if getter is None:
             return {}
         return getter(symbol)
 
     def get_open_orders(self) -> list[dict[str, Any]]:
+        """get_open_orders method"""
         getter = getattr(self.client, "get_open_orders", None)
         if getter is None:
             return []
         return getter()
 
     def poll_output(self) -> tuple[str, Any] | None:
+        """poll_output method"""
         item = self.client.poll_output()
         if item is None:
             return None

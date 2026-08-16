@@ -1,3 +1,4 @@
+"""Module-level docstring."""
 from __future__ import annotations
 
 import json
@@ -12,16 +13,19 @@ CHANNEL_MARKET = "market"
 
 
 def make_request_id() -> str:
+    """make_request_id function"""
     return uuid.uuid4().hex
 
 
 def dumps_message(payload: dict[str, Any]) -> bytes:
+    """dumps_message function"""
     return json.dumps(_normalize(payload), ensure_ascii=False, separators=(",", ":")).encode(
         "utf-8"
     )
 
 
 def loads_message(payload: bytes) -> dict[str, Any]:
+    """loads_message function"""
     return json.loads(payload.decode("utf-8"))
 
 

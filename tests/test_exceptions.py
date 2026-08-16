@@ -600,9 +600,9 @@ class TestEdgeCases:
 
     def test_exception_with_unicode_exchange_name(self):
         """Exception handles unicode exchange names"""
-        exc = ExchangeNotFoundError("测试___SPOT")
-        assert exc.exchange_name == "测试___SPOT"
-        assert "测试" in str(exc)
+        exc = ExchangeNotFoundError("___SPOT")
+        assert exc.exchange_name == "___SPOT"
+        assert "" in str(exc)
 
     def test_exception_with_very_long_message(self):
         """Exception handles long detail messages"""

@@ -71,6 +71,7 @@ class _TimeoutContext:
     __slots__ = ("_timeout_seconds", "_task", "_cancelled", "_cancel_handler")
 
     def __init__(self, timeout_seconds: float) -> None:
+        """__init__ method"""
         _validate_positive_number("timeout_seconds", timeout_seconds)
         self._timeout_seconds = timeout_seconds
         self._task: asyncio.Task[None] | None = None
@@ -121,8 +122,8 @@ class AsyncContextManager:
             async with asyncio.timeout(timeout_seconds):
                 yield
         else:
-            async with _TimeoutContext(timeout_seconds):
-                yield
+                async with _TimeoutContext(timeout_seconds):
+                    yield
 
     @staticmethod
     @asynccontextmanager
@@ -246,8 +247,7 @@ def async_timeout(
     def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            try:
-                return await asyncio.wait_for(func(*args, **kwargs), timeout=timeout_seconds)
+            try: return await asyncio.wait_for(func(*args, **kwargs), timeout=timeout_seconds)
             except asyncio.TimeoutError:
                 raise TimeoutError(f"Operation timed out after {timeout_seconds} seconds") from None
 
@@ -314,6 +314,7 @@ class AsyncRateLimiter:
     """Async rate limiter implementation."""
 
     def __init__(self, max_requests: int, time_window: float) -> None:
+        """__init__ method"""
         _validate_positive_int("max_requests", max_requests)
         _validate_positive_number("time_window", time_window)
         self.max_requests = max_requests
@@ -349,6 +350,7 @@ class AsyncSemaphore:
     """Async semaphore with timeout support."""
 
     def __init__(self, max_concurrent: int) -> None:
+        """__init__ method"""
         _validate_positive_int("max_concurrent", max_concurrent)
         self._semaphore = asyncio.Semaphore(max_concurrent)
 
@@ -386,6 +388,7 @@ class AsyncQueue:
     """Async queue with timeout and priority support."""
 
     def __init__(self, maxsize: int = 0) -> None:
+        """__init__ method"""
         if maxsize < 0:
             raise ValueError("maxsize must be >= 0")
         self._queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=maxsize)
@@ -405,12 +408,10 @@ class AsyncQueue:
         """Get item with optional timeout."""
         _validate_timeout(timeout)
         if timeout is not None:
-            try:
-                return await asyncio.wait_for(self._queue.get(), timeout=timeout)
+            try: return await asyncio.wait_for(self._queue.get(), timeout=timeout)
             except asyncio.TimeoutError:
                 raise TimeoutError(f"Failed to get item within {timeout} seconds") from None
-        else:
-            return await self._queue.get()
+        else: return await self._queue.get()
 
     def qsize(self) -> int:
         """Get queue size."""
@@ -429,6 +430,7 @@ class AsyncTaskGroup:
     """Manage group of async tasks with proper cleanup."""
 
     def __init__(self) -> None:
+        """__init__ method"""
         self._tasks: set[asyncio.Task[Any]] = set()
         self._shutdown = False
 
@@ -451,7 +453,7 @@ class AsyncTaskGroup:
         tasks_snapshot = set(self._tasks)
         if timeout is not None:
             try:
-                await asyncio.wait_for(
+                    await asyncio.wait_for(
                     asyncio.gather(*tasks_snapshot, return_exceptions=True), timeout=timeout
                 )
             except TimeoutError:

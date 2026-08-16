@@ -31,6 +31,7 @@ class DIContainer:
     """Dependency injection container with lifetime management."""
 
     def __init__(self) -> None:
+        """__init__ method"""
         self._services: dict[type, Any] = {}
         self._factories: dict[type, Callable[[], Any]] = {}
         self._singletons: dict[type, Any] = {}
@@ -117,8 +118,7 @@ class DIContainer:
                     # Use default value if available
                     if param.default != inspect.Parameter.empty:
                         kwargs[param_name] = param.default
-                    else:
-                        raise ValueError(
+                    else: raise ValueError(
                             f"Unable to resolve required dependency '{param_name}' "
                             f"for {implementation.__name__}"
                         ) from exc
@@ -210,8 +210,7 @@ def inject_method(func: Callable[P, T]) -> Callable[P, T]:
                 except ValueError as exc:
                     if param.default != inspect.Parameter.empty:
                         kwargs[param_name] = param.default
-                    else:
-                        raise ValueError(
+                    else: raise ValueError(
                             f"Unable to resolve required dependency '{param_name}' "
                             f"for {func.__name__}"
                         ) from exc
@@ -228,6 +227,7 @@ class Container:
     _instance_lock = threading.Lock()
 
     def __new__(cls) -> Container:
+        """__new__ method"""
         if cls._instance is None:
             with cls._instance_lock:
                 if cls._instance is None:
@@ -235,6 +235,7 @@ class Container:
         return cls._instance
 
     def __init__(self) -> None:
+        """__init__ method"""
         if not hasattr(self, "_initialized"):
             self._container = DIContainer()
             self._initialized = True

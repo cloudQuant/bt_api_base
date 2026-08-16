@@ -1,3 +1,4 @@
+"""Module-level docstring."""
 from __future__ import annotations
 
 import pytest
@@ -74,6 +75,7 @@ class TestOrderStatus:
 
 def test_from_value_valid_status():
     # Test valid status values
+    """test_from_value_valid_status function"""
     assert OrderStatus.from_value("submitted") == OrderStatus.SUBMITTED
     assert OrderStatus.from_value("NEW") == OrderStatus.ACCEPTED
     assert OrderStatus.from_value("margin") == OrderStatus.MARGIN
@@ -87,6 +89,7 @@ def test_from_value_valid_status():
 
 def test_from_value_invalid_status():
     # Test invalid status values, should raise ValueError
+    """test_from_value_invalid_status function"""
     with pytest.raises(ValueError):
         OrderStatus.from_value("invalid_status")
 
@@ -96,4 +99,5 @@ def test_from_value_invalid_status():
 
 def test_from_value_live_mapped_to_new():
     # Test 'live' being correctly mapped to 'NEW'
+    """test_from_value_live_mapped_to_new function"""
     assert OrderStatus.from_value("live") == OrderStatus.ACCEPTED

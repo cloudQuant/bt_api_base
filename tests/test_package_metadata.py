@@ -7,5 +7,6 @@ from bt_api_base._version import __version__
 
 
 def test_package_exports_version() -> None:
+    """test_package_exports_version function"""
     assert bt_api_base.__version__ == __version__
     assert bt_api_base.__version__

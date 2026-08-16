@@ -9,20 +9,25 @@ class _SampleContainer(AutoInitMixin):
     """A minimal container for testing AutoInitMixin behavior."""
 
     def __init__(self, raw_data):
+        """__init__ method"""
         self.raw_data = raw_data
         self.parsed_value = None
 
     def init_data(self):
+        """init_data method"""
         self.parsed_value = self.raw_data * 2
 
     def get_event(self):
+        """get_event method"""
         return "TestEvent"
 
     def get_parsed_value(self):
+        """get_parsed_value method"""
         return self.parsed_value
 
 
 class TestAutoInitMixin:
+    """Class TestAutoInitMixin"""
     def test_auto_init_on_get_method(self):
         """get_* methods should auto-trigger init_data()."""
         c = _SampleContainer(5)
@@ -52,14 +57,17 @@ class TestAutoInitMixin:
 
         class _CountingContainer(AutoInitMixin):
             def __init__(self):
+                """__init__ method"""
                 self.value = 0
 
             def init_data(self):
+                """init_data method"""
                 nonlocal call_count
                 call_count += 1
                 self.value = 42
 
             def get_value(self):
+                """get_value method"""
                 return self.value
 
         c = _CountingContainer()

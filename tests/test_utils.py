@@ -28,19 +28,22 @@ class TestParseEnvInt:
 
     def test_default_when_empty(self):
         """Test default value when env is empty."""
-        with mock.patch.dict(os.environ, {"TEST_INT": ""}, clear=True):
+        with mock.patch.dict(os.environ, {"TEST_INT":
+            ""}, clear=True):
             result = _parse_env_int("TEST_INT", 42)
             assert result == 42
 
     def test_valid_int_value(self):
         """Test valid integer value."""
-        with mock.patch.dict(os.environ, {"TEST_INT": "100"}, clear=True):
+        with mock.patch.dict(os.environ, {"TEST_INT":
+            "100"}, clear=True):
             result = _parse_env_int("TEST_INT", 42)
             assert result == 100
 
     def test_invalid_int_returns_default(self):
         """Test invalid integer returns default."""
-        with mock.patch.dict(os.environ, {"TEST_INT": "not_a_number"}, clear=True):
+        with mock.patch.dict(os.environ, {"TEST_INT":
+            "not_a_number"}, clear=True):
             result = _parse_env_int("TEST_INT", 42)
             assert result == 42
 
@@ -56,7 +59,8 @@ class TestParseEnvBool:
 
     def test_default_when_empty(self):
         """Test default value when env is empty."""
-        with mock.patch.dict(os.environ, {"TEST_BOOL": ""}, clear=True):
+        with mock.patch.dict(os.environ, {"TEST_BOOL":
+            ""}, clear=True):
             result = _parse_env_bool("TEST_BOOL", False)
             assert result is False
 
@@ -64,7 +68,8 @@ class TestParseEnvBool:
         """Test truthy string values."""
         truthy_values = ["true", "1", "yes", "y", "on", "TRUE", "True", "YES"]
         for val in truthy_values:
-            with mock.patch.dict(os.environ, {"TEST_BOOL": val}, clear=True):
+            with mock.patch.dict(os.environ, {"TEST_BOOL":
+                val}, clear=True):
                 result = _parse_env_bool("TEST_BOOL", False)
                 assert result is True, f"Expected True for {val}"
 
@@ -72,13 +77,15 @@ class TestParseEnvBool:
         """Test falsy string values."""
         falsy_values = ["false", "0", "no", "n", "off", "FALSE", "False", "NO"]
         for val in falsy_values:
-            with mock.patch.dict(os.environ, {"TEST_BOOL": val}, clear=True):
+            with mock.patch.dict(os.environ, {"TEST_BOOL":
+                val}, clear=True):
                 result = _parse_env_bool("TEST_BOOL", True)
                 assert result is False, f"Expected False for {val}"
 
     def test_invalid_bool_returns_default(self):
         """Test invalid boolean returns default."""
-        with mock.patch.dict(os.environ, {"TEST_BOOL": "invalid"}, clear=True):
+        with mock.patch.dict(os.environ, {"TEST_BOOL":
+            "invalid"}, clear=True):
             result = _parse_env_bool("TEST_BOOL", True)
             assert result is True
 

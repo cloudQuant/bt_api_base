@@ -1,15 +1,15 @@
-"""统一错误框架
+"""
 
-提供统一的错误码体系、错误翻译器基类及便捷异常子类。
-各交易所的具体翻译器实现由对应插件包提供。
+、。
+。
 
-关于异常体系:
-    bt_api_base 有两套异常:
-    - exceptions.py: 传统异常层级 (RateLimitError, RequestError 等)，用于控制流
-    - error.py (本模块): 带错误码的统一错误 (UnifiedError 及子类)，用于交易所错误翻译
+:
+    bt_api_base :
+    - exceptions.py:  (RateLimitError, RequestError )，
+    - error.py ():  (UnifiedError )，
 
-    便捷子类 (UnifiedRateLimitError, UnifiedAuthError 等) 同时继承两套体系，
-    因此 ``except RateLimitError`` 也能捕获 ``UnifiedRateLimitError``。
+     (UnifiedRateLimitError, UnifiedAuthError ) ，
+     ``except RateLimitError``  ``UnifiedRateLimitError``。
 """
 
 from __future__ import annotations
@@ -27,11 +27,12 @@ from bt_api_base.exceptions import (
     RequestFailedError,
 )
 
-# ── 错误分类 ─────────────────────────────────────────────────
+# ──  ─────────────────────────────────────────────────
 
 
 @unique
 class ErrorCategory(StrEnum):
+    """Class ErrorCategory"""
     NETWORK = "network"
     AUTH = "auth"
     RATE_LIMIT = "rate_limit"
@@ -45,30 +46,31 @@ class ErrorCategory(StrEnum):
     ACCOUNT = "account"
 
 
-# ── 统一错误码 ────────────────────────────────────────────────
+# ──  ────────────────────────────────────────────────
 
 
 @unique
 class UnifiedErrorCode(int, Enum):
-    # 网络错误 (1xxx)
+    #  (1xxx)
+    """Class UnifiedErrorCode"""
     NETWORK_TIMEOUT = 1001
     NETWORK_DISCONNECTED = 1002
     DNS_ERROR = 1003
     CONNECTION_REFUSED = 1004
 
-    # 认证错误 (2xxx)
+    #  (2xxx)
     INVALID_API_KEY = 2001
     INVALID_SIGNATURE = 2002
     EXPIRED_TIMESTAMP = 2003
     PERMISSION_DENIED = 2004
     SESSION_EXPIRED = 2005
 
-    # 限流错误 (3xxx)
+    #  (3xxx)
     RATE_LIMIT_EXCEEDED = 3001
     IP_BANNED = 3002
     TOO_MANY_REQUESTS = 3003
 
-    # 业务错误 (4xxx)
+    #  (4xxx)
     INVALID_SYMBOL = 4001
     INVALID_PRICE = 4002
     INVALID_VOLUME = 4003
@@ -93,34 +95,34 @@ class UnifiedErrorCode(int, Enum):
     TRANSFER_FAILED = 4022
     ACCOUNT_SUSPENDED = 4023
 
-    # 系统错误 (5xxx)
+    #  (5xxx)
     EXCHANGE_MAINTENANCE = 5001
     EXCHANGE_OVERLOADED = 5002
     INTERNAL_ERROR = 5003
     UNSUPPORTED_OPERATION = 5004
 
-    # 能力错误 (6xxx)
+    #  (6xxx)
     NOT_SUPPORTED = 6001
     NOT_IMPLEMENTED = 6002
 
-    # 验证错误 (7xxx)
+    #  (7xxx)
     INVALID_PARAMETER = 7001
     MISSING_PARAMETER = 7002
     PARAMETER_OUT_OF_RANGE = 7003
 
-    # 通用分类错误 (8xxx) — 用于无法精确映射时的兜底
+    #  (8xxx) — 
     API_ERROR = 8001
     ORDER_ERROR = 8002
     TRADE_ERROR = 8003
     ACCOUNT_ERROR = 8004
 
 
-# ── 统一错误 ──────────────────────────────────────────────────
+# ──  ──────────────────────────────────────────────────
 
 
 @dataclass
 class UnifiedError(BtApiError):
-    """统一错误格式，继承 BtApiError 以兼容现有异常处理"""
+    """， BtApiError """
 
     code: UnifiedErrorCode
     category: ErrorCategory
@@ -136,6 +138,7 @@ class UnifiedError(BtApiError):
         return f"UnifiedError(code={self.code.name}, venue={self.venue}, message={self.message!r})"
 
     def to_dict(self) -> dict[str, Any]:
+        """to_dict method"""
         return {
             "code": self.code.value,
             "code_name": self.code.name,
@@ -147,14 +150,14 @@ class UnifiedError(BtApiError):
         }
 
 
-# ── 便捷异常子类 ──────────────────────────────────────────────
+# ──  ──────────────────────────────────────────────
 
 
 class UnifiedRateLimitError(UnifiedError, RateLimitError):
-    """限流错误
+    """
 
-    同时继承 UnifiedError 和 exceptions.RateLimitError，
-    因此 ``except RateLimitError`` 可以捕获此异常。
+     UnifiedError  exceptions.RateLimitError，
+     ``except RateLimitError`` 。
     """
 
     def __init__(
@@ -163,6 +166,7 @@ class UnifiedRateLimitError(UnifiedError, RateLimitError):
         response: Any = None,
         message: str = "Rate limit exceeded",
     ) -> None:
+        """__init__ method"""
         UnifiedError.__init__(
             self,
             code=UnifiedErrorCode.RATE_LIMIT_EXCEEDED,
@@ -171,16 +175,16 @@ class UnifiedRateLimitError(UnifiedError, RateLimitError):
             message=message,
             context={"raw_response": response} if response else {},
         )
-        # exceptions.RateLimitError 兼容属性
+        # exceptions.RateLimitError 
         self.exchange_name = venue
         self.retry_after = None
 
 
 class UnifiedAuthError(UnifiedError, AuthenticationError):
-    """认证错误
+    """
 
-    同时继承 UnifiedError 和 exceptions.AuthenticationError，
-    因此 ``except AuthenticationError`` 可以捕获此异常。
+     UnifiedError  exceptions.AuthenticationError，
+     ``except AuthenticationError`` 。
     """
 
     def __init__(
@@ -189,6 +193,7 @@ class UnifiedAuthError(UnifiedError, AuthenticationError):
         response: Any = None,
         message: str = "Authentication failed",
     ) -> None:
+        """__init__ method"""
         UnifiedError.__init__(
             self,
             code=UnifiedErrorCode.INVALID_API_KEY,
@@ -197,12 +202,12 @@ class UnifiedAuthError(UnifiedError, AuthenticationError):
             message=message,
             context={"raw_response": response} if response else {},
         )
-        # exceptions.AuthenticationError 兼容属性
+        # exceptions.AuthenticationError 
         self.exchange_name = venue
 
 
 class ServerError(UnifiedError):
-    """服务器端错误"""
+    """"""
 
     def __init__(
         self,
@@ -211,6 +216,7 @@ class ServerError(UnifiedError):
         response: Any = None,
         message: str = "Server error",
     ) -> None:
+        """__init__ method"""
         super().__init__(
             code=UnifiedErrorCode.INTERNAL_ERROR,
             category=ErrorCategory.SYSTEM,
@@ -221,10 +227,10 @@ class ServerError(UnifiedError):
 
 
 class UnifiedRequestFailedError(UnifiedError, RequestFailedError):
-    """请求失败（通用）
+    """（）
 
-    同时继承 UnifiedError 和 exceptions.RequestFailedError，
-    因此 ``except RequestFailedError`` 可以捕获此异常。
+     UnifiedError  exceptions.RequestFailedError，
+     ``except RequestFailedError`` 。
     """
 
     def __init__(
@@ -234,6 +240,7 @@ class UnifiedRequestFailedError(UnifiedError, RequestFailedError):
         response: Any = None,
         message: str = "Request failed",
     ) -> None:
+        """__init__ method"""
         UnifiedError.__init__(
             self,
             code=UnifiedErrorCode.INTERNAL_ERROR,
@@ -242,21 +249,21 @@ class UnifiedRequestFailedError(UnifiedError, RequestFailedError):
             message=message,
             context={"status": status, "raw_response": response},
         )
-        # exceptions.RequestFailedError 兼容属性
+        # exceptions.RequestFailedError 
         self.exchange_name = venue
         self.status_code = status
 
 
-# ── 错误翻译器 ────────────────────────────────────────────────
+# ──  ────────────────────────────────────────────────
 
 
 class ErrorTranslator:
-    """错误翻译器基类"""
+    """"""
 
-    # 子类覆盖此映射: {原始错误码: (UnifiedErrorCode, 默认消息)}
+    # : {: (UnifiedErrorCode, )}
     ERROR_MAP: ClassVar[dict[Any, tuple[UnifiedErrorCode | None, str]]] = {}
 
-    # 通用 HTTP 状态码映射
+    #  HTTP 
     HTTP_STATUS_MAP: ClassVar[dict[int, tuple[UnifiedErrorCode, str]]] = {
         400: (UnifiedErrorCode.INVALID_PARAMETER, "Invalid request parameters"),
         401: (UnifiedErrorCode.INVALID_API_KEY, "Invalid API key"),
@@ -270,21 +277,21 @@ class ErrorTranslator:
 
     @classmethod
     def translate(cls, raw_error: dict[str, Any], venue: str) -> UnifiedError | None:
-        """将原始错误转换为统一错误
+        """
 
-        :param raw_error: 包含错误信息的字典 (code, msg/message, status 等)
-        :param venue: 场所名称
+        :param raw_error:  (code, msg/message, status )
+        :param venue: 
         :return: UnifiedError
         """
         code = raw_error.get("code")
         msg = raw_error.get("msg", raw_error.get("message", ""))
         status = raw_error.get("status")
 
-        # 1. 尝试场所特定错误码映射
+        # 1. 
         if code is not None and code in cls.ERROR_MAP:
             unified_code, default_msg = cls.ERROR_MAP[code]
             if unified_code is None:
-                return None  # 不是错误（如 CTP 返回码 0）
+                return None  # （ CTP  0）
             return UnifiedError(
                 code=unified_code,
                 category=cls._get_category(unified_code),
@@ -294,7 +301,7 @@ class ErrorTranslator:
                 context={"raw_response": raw_error},
             )
 
-        # 2. 尝试 HTTP 状态码映射
+        # 2.  HTTP 
         if status and status in cls.HTTP_STATUS_MAP:
             unified_code, default_msg = cls.HTTP_STATUS_MAP[status]
             return UnifiedError(
@@ -306,7 +313,7 @@ class ErrorTranslator:
                 context={"raw_response": raw_error},
             )
 
-        # 3. 默认
+        # 3. 
         return UnifiedError(
             code=UnifiedErrorCode.INTERNAL_ERROR,
             category=ErrorCategory.SYSTEM,
@@ -318,7 +325,7 @@ class ErrorTranslator:
 
     @classmethod
     def _get_category(cls, code: UnifiedErrorCode) -> ErrorCategory:
-        """从错误码数值范围推断类别"""
+        """"""
         v = code.value
         if 1000 <= v < 2000:
             return ErrorCategory.NETWORK
@@ -332,12 +339,11 @@ class ErrorTranslator:
             return ErrorCategory.SYSTEM
         elif 6000 <= v < 7000:
             return ErrorCategory.CAPABILITY
-        else:
-            return ErrorCategory.VALIDATION
+        else: return ErrorCategory.VALIDATION
 
 
 class OKXErrorTranslator(ErrorTranslator):
-    """OKX API 错误翻译器"""
+    """OKX API """
 
     ERROR_MAP = {
         "0": (None, "Success"),
@@ -367,7 +373,7 @@ class OKXErrorTranslator(ErrorTranslator):
 
     @classmethod
     def translate(cls, raw_error: dict, venue: str) -> UnifiedError | None:
-        """OKX 错误码是字符串，需要特殊处理"""
+        """OKX ，"""
         code = raw_error.get("code", raw_error.get("sCode", ""))
         msg = raw_error.get("msg", raw_error.get("sMsg", ""))
         code_str = str(code) if code is not None else ""
@@ -417,7 +423,7 @@ if TYPE_CHECKING:
     )
 
 __all__ = [
-    # 核心类
+    # 
     "ErrorCategory",
     "UnifiedErrorCode",
     "UnifiedError",
@@ -427,6 +433,6 @@ __all__ = [
     "UnifiedRequestFailedError",
     "ErrorTranslator",
     "OKXErrorTranslator",
-    # 翻译器（可选导入；按插件安装）
+    # （；）
     "BinanceErrorTranslator",
 ]

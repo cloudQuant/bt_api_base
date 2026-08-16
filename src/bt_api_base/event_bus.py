@@ -1,6 +1,6 @@
 """
-事件总线 — 提供发布/订阅模式的事件分发机制
-支持 Queue 模式（现有行为）和 Callback 模式（适配 CTP SPI / IB EWrapper 等回调驱动 API）
+ — /
+ Queue （） Callback （ CTP SPI / IB EWrapper  API）
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ __all__ = ["EventBus", "ErrorHandlerMode", "ErrorSeverity"]
 
 
 class ErrorHandlerMode(Enum):
-    """事件处理错误策略"""
+    """"""
 
     LOG = "log"
     RAISE = "raise"
@@ -27,7 +27,7 @@ class ErrorHandlerMode(Enum):
 
 
 class ErrorSeverity(Enum):
-    """错误严重程度分类"""
+    """"""
 
     USER_ERROR = "user_error"
     BUSINESS_ERROR = "business_error"
@@ -50,13 +50,14 @@ def _classify_error(error: Exception) -> ErrorSeverity:
 
 
 class EventBus:
-    """轻量级事件总线，支持按事件类型注册回调"""
+    """，"""
 
     def __init__(
         self,
         logger: Any = None,
         error_mode: ErrorHandlerMode = ErrorHandlerMode.LOG,
     ) -> None:
+        """__init__ method"""
         self._handlers: defaultdict[str, list[Callable[..., Any]]] = defaultdict(list)
         self._lock = threading.RLock()
         self.logger = logger or get_logger("event_bus")
@@ -64,6 +65,7 @@ class EventBus:
         self._last_errors: list[tuple[str, Callable[..., Any], Exception]] = []
 
     def on(self, event_type: str, handler: Callable[..., Any]) -> None:
+        """on method"""
         if not event_type:
             raise ValueError("event_type must be a non-empty string")
         if not callable(handler):
@@ -73,6 +75,7 @@ class EventBus:
                 self._handlers[event_type].append(handler)
 
     def off(self, event_type: str, handler: Callable[..., Any] | None = None) -> None:
+        """off method"""
         with self._lock:
             if handler is None:
                 self._handlers.pop(event_type, None)
@@ -82,6 +85,7 @@ class EventBus:
                     handlers.remove(handler)
 
     def emit(self, event_type: str, data: Any) -> list[Exception]:
+        """emit method"""
         with self._lock:
             handlers = list(self._handlers.get(event_type, []))
 
@@ -121,16 +125,20 @@ class EventBus:
         return errors
 
     def get_last_errors(self) -> list[tuple[str, Callable[..., Any], Exception]]:
+        """get_last_errors method"""
         return list(self._last_errors)
 
     def clear_errors(self) -> None:
+        """clear_errors method"""
         self._last_errors = []
 
     def has_handlers(self, event_type: str) -> bool:
+        """has_handlers method"""
         with self._lock:
             return len(self._handlers.get(event_type, [])) > 0
 
     def clear(self) -> None:
+        """clear method"""
         with self._lock:
             self._handlers.clear()
             self._last_errors = []

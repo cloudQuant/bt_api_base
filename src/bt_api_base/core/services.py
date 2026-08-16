@@ -49,6 +49,7 @@ class ConnectionService(IConnectionManager):
     """Manages connection pools for multiple exchanges."""
 
     def __init__(self, logger: Any | None = None) -> None:
+        """__init__ method"""
         self.logger = logger or get_logger("connection_service")
         self._pools: dict[str, dict[str, Any]] = {}
         self._semaphores: dict[str, AsyncSemaphore] = {}
@@ -142,6 +143,7 @@ class EventService(IEventBus):
     """Enhanced event bus with async support and persistence."""
 
     def __init__(self, logger: Any | None = None) -> None:
+        """__init__ method"""
         self.logger = logger or get_logger("event_service")
         self._handlers: dict[str, list[Callable[[Any], Any]]] = defaultdict(list)
         self._async_handlers: dict[str, list[Callable[[Any], Any]]] = defaultdict(list)
@@ -271,6 +273,7 @@ class CacheService(ICache):
     """Distributed cache service with Redis support."""
 
     def __init__(self, redis_url: str | None = None, logger: Any | None = None) -> None:
+        """__init__ method"""
         self.logger = logger or get_logger("cache_service")
         self._redis_client = None
         self._local_cache: dict[str, Any] = {}
@@ -360,6 +363,7 @@ class RateLimitService(IRateLimiter):
     """Advanced rate limiting with multiple strategies."""
 
     def __init__(self, logger: Any | None = None) -> None:
+        """__init__ method"""
         self.logger = logger or get_logger("rate_limit_service")
         self._limiters: dict[str, AsyncRateLimiter] = {}
         self._limits: dict[str, dict[str, Any]] = {}
@@ -430,6 +434,7 @@ class MarketDataService:
         rate_limiter: IRateLimiter = inject(IRateLimiter),  # type: ignore[type-abstract]
         event_bus: IEventBus = inject(IEventBus),  # type: ignore[type-abstract]
     ) -> None:
+        """__init__ method"""
         self.connection_manager = connection_manager
         self.cache_service = cache_service
         self.rate_limiter = rate_limiter
@@ -517,6 +522,7 @@ class TradingService:
         event_bus: IEventBus = inject(IEventBus),  # type: ignore[type-abstract]
         rate_limiter: IRateLimiter = inject(IRateLimiter),  # type: ignore[type-abstract]
     ) -> None:
+        """__init__ method"""
         self.connection_manager = connection_manager
         self.event_bus = event_bus
         self.rate_limiter = rate_limiter
@@ -574,6 +580,7 @@ class AccountService:
         cache_service: ICache = inject(ICache),  # type: ignore[type-abstract]
         event_bus: IEventBus = inject(IEventBus),  # type: ignore[type-abstract]
     ) -> None:
+        """__init__ method"""
         self.connection_manager = connection_manager
         self.cache_service = cache_service
         self.event_bus = event_bus
@@ -605,5 +612,4 @@ class AccountService:
 
             return balance_data
 
-        finally:
-            await self.connection_manager.release_connection(exchange_name, connection)
+        finally: await self.connection_manager.release_connection(exchange_name, connection)

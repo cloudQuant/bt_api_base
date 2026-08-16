@@ -17,6 +17,7 @@ class MockFeed:
     """Mock feed class for testing"""
 
     def __init__(self, data_queue=None, **kwargs):
+        """__init__ method"""
         self.data_queue = data_queue
         self.kwargs = kwargs
 

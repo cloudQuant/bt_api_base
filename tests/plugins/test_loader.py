@@ -1,3 +1,4 @@
+"""Module-level docstring."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from bt_api_base.registry import ExchangeRegistry
 
 class _DummyFeed:
     def __init__(self, data_queue: Any, **kwargs: Any) -> None:
+        """__init__ method"""
         self.data_queue = data_queue
         self.kwargs = kwargs
 
@@ -30,6 +32,7 @@ class _FakeEntryPoint:
     loader: Any
 
     def load(self) -> Any:
+        """load method"""
         if isinstance(self.loader, BaseException):
             raise self.loader
         if callable(self.loader):
@@ -48,16 +51,19 @@ def _plugin_info(name: str, exchanges: tuple[str, ...]) -> PluginInfo:
 
 
 def setup_function() -> None:
+    """setup_function function"""
     ExchangeRegistry.clear()
     GatewayRuntimeRegistrar.clear()
 
 
 def teardown_function() -> None:
+    """teardown_function function"""
     ExchangeRegistry.clear()
     GatewayRuntimeRegistrar.clear()
 
 
 def test_plugin_loader_loads_plugin_successfully(monkeypatch):
+    """test_plugin_loader_loads_plugin_successfully function"""
     def register_plugin(registry: Any, runtime_registrar: Any) -> PluginInfo:
         registry.register_feed("DEMO___SPOT", _DummyFeed)
         registry.register_exchange_data("DEMO___SPOT", _DummyExchangeData)
@@ -80,6 +86,7 @@ def test_plugin_loader_loads_plugin_successfully(monkeypatch):
 
 
 def test_plugin_loader_skips_import_error(monkeypatch):
+    """test_plugin_loader_skips_import_error function"""
     entry_point = _FakeEntryPoint("broken", "broken.plugin", ImportError("missing dependency"))
     loader = PluginLoader(ExchangeRegistry, GatewayRuntimeRegistrar)
     monkeypatch.setattr(loader, "_discover_entry_points", lambda group: [entry_point])
@@ -91,6 +98,7 @@ def test_plugin_loader_skips_import_error(monkeypatch):
 
 
 def test_plugin_loader_skips_version_mismatch(monkeypatch):
+    """test_plugin_loader_skips_version_mismatch function"""
     def register_plugin(registry: Any, runtime_registrar: Any) -> PluginInfo:
         registry.register_feed("OLD___SPOT", _DummyFeed)
         runtime_registrar.register_adapter("OLD", _DummyAdapter)
@@ -114,6 +122,7 @@ def test_plugin_loader_skips_version_mismatch(monkeypatch):
 
 
 def test_plugin_loader_skips_duplicate_registration(monkeypatch):
+    """test_plugin_loader_skips_duplicate_registration function"""
     def register_first(registry: Any, runtime_registrar: Any) -> PluginInfo:
         registry.register_feed("DUP___SPOT", _DummyFeed)
         runtime_registrar.register_adapter("DUP", _DummyAdapter)
@@ -146,6 +155,7 @@ def test_plugin_loader_skips_duplicate_registration(monkeypatch):
 
 
 def test_plugin_loader_handles_no_plugins(monkeypatch, caplog):
+    """test_plugin_loader_handles_no_plugins function"""
     loader = PluginLoader(ExchangeRegistry, GatewayRuntimeRegistrar)
     monkeypatch.setattr(loader, "_discover_entry_points", lambda group: [])
 
@@ -157,6 +167,7 @@ def test_plugin_loader_handles_no_plugins(monkeypatch, caplog):
 
 
 def test_plugin_loader_records_unexpected_registration_error(monkeypatch):
+    """test_plugin_loader_records_unexpected_registration_error function"""
     def register_plugin(registry: Any, runtime_registrar: Any) -> PluginInfo:
         raise RuntimeError("boom")
 

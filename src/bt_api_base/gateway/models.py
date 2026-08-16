@@ -1,3 +1,4 @@
+"""Module-level docstring."""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -7,6 +8,7 @@ from typing import Any
 
 @dataclass
 class GatewayTick:
+    """Class GatewayTick"""
     timestamp: float
     symbol: str
     exchange: str = ""
@@ -35,6 +37,7 @@ class GatewayTick:
     prev_close: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        """to_dict method"""
         payload = asdict(self)
         if self.datetime is not None:
             payload["datetime"] = self.datetime.isoformat()
@@ -42,6 +45,7 @@ class GatewayTick:
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> GatewayTick:
+        """from_dict method"""
         data = dict(payload)
         dt_value = data.get("datetime")
         if isinstance(dt_value, str) and dt_value:

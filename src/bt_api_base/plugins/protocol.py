@@ -1,3 +1,4 @@
+"""Module-level docstring."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -5,6 +6,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class PluginInfo:
+    """Class PluginInfo"""
     name: str
     version: str
     core_requires: str

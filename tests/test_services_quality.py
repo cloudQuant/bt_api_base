@@ -1,3 +1,4 @@
+"""Module-level docstring."""
 from __future__ import annotations
 
 import time
@@ -9,6 +10,7 @@ from bt_api_base.core.services import CacheService, EventService, RateLimitServi
 
 @pytest.mark.asyncio
 async def test_event_service_publish_async_falls_back_to_async_handlers() -> None:
+    """test_event_service_publish_async_falls_back_to_async_handlers function"""
     service = EventService()
     received: list[dict[str, str]] = []
 
@@ -24,6 +26,7 @@ async def test_event_service_publish_async_falls_back_to_async_handlers() -> Non
 
 @pytest.mark.asyncio
 async def test_cache_service_local_cache_isolated_from_mutation() -> None:
+    """test_cache_service_local_cache_isolated_from_mutation function"""
     service = CacheService()
     original = {"outer": {"value": 1}}
 
@@ -44,6 +47,7 @@ async def test_cache_service_local_cache_isolated_from_mutation() -> None:
 async def test_rate_limit_service_respects_configured_remaining_tokens_before_first_acquire() -> (
     None
 ):
+    """test_rate_limit_service_respects_configured_remaining_tokens_before_first_acquire function"""
     service = RateLimitService()
 
     service.configure_limit("orders", 3, 60.0)
@@ -54,6 +58,7 @@ async def test_rate_limit_service_respects_configured_remaining_tokens_before_fi
 
 @pytest.mark.asyncio
 async def test_rate_limit_service_acquire_consumes_requested_token_count() -> None:
+    """test_rate_limit_service_acquire_consumes_requested_token_count function"""
     service = RateLimitService()
 
     service.configure_limit("orders", 3, 60.0)
@@ -66,6 +71,7 @@ async def test_rate_limit_service_acquire_consumes_requested_token_count() -> No
 
 @pytest.mark.asyncio
 async def test_rate_limit_service_rejects_non_positive_token_request() -> None:
+    """test_rate_limit_service_rejects_non_positive_token_request function"""
     service = RateLimitService()
 
     with pytest.raises(ValueError, match="tokens must be > 0"):
@@ -74,6 +80,7 @@ async def test_rate_limit_service_rejects_non_positive_token_request() -> None:
 
 @pytest.mark.asyncio
 async def test_rate_limit_service_prunes_expired_requests_for_introspection() -> None:
+    """test_rate_limit_service_prunes_expired_requests_for_introspection function"""
     service = RateLimitService()
 
     service.configure_limit("orders", 2, 0.5)

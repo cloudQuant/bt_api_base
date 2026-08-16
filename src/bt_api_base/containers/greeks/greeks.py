@@ -7,6 +7,7 @@ class GreeksData:
     """Base class for account Greeks data."""
 
     def __init__(self, greeks_info, has_been_json_encoded=False):
+        """__init__ method"""
         self.event = "AccountGreeksEvent"
         self.greeks_info = greeks_info
         self.has_been_json_encoded = has_been_json_encoded
@@ -23,9 +24,11 @@ class GreeksData:
         return self.event
 
     def init_data(self):
+        """init_data method"""
         raise NotImplementedError
 
     def get_all_data(self):
+        """get_all_data method"""
         if self.all_data is None:
             self.all_data = {
                 "exchange_name": self.exchange_name,

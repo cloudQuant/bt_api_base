@@ -1,7 +1,7 @@
 """
-InstrumentManager — 统一交易标的管理器
+InstrumentManager — 
 
-提供 Instrument 注册、查询、双向映射功能。
+ Instrument 、、。
 """
 
 from __future__ import annotations
@@ -14,19 +14,22 @@ __all__ = ["InstrumentManager", "get_instrument_manager"]
 
 
 class InstrumentManager:
-    """Instrument 管理器"""
+    """Instrument """
 
     def __init__(self) -> None:
+        """__init__ method"""
         self._instruments: dict[str, Instrument] = {}
         self._by_venue: dict[str, dict[str, Instrument]] = {}
         self._by_underlying: dict[str, list[Instrument]] = {}
         self._lock = threading.RLock()
 
     def register(self, instrument: Instrument) -> None:
+        """register method"""
         with self._lock:
             self._register_unlocked(instrument)
 
     def register_many(self, instruments: list[Instrument]) -> None:
+        """register_many method"""
         with self._lock:
             for inst in instruments:
                 self._register_unlocked(inst)
@@ -59,10 +62,12 @@ class InstrumentManager:
             self._by_underlying.setdefault(instrument.underlying, []).append(instrument)
 
     def get(self, internal: str) -> Instrument | None:
+        """get method"""
         with self._lock:
             return self._instruments.get(internal)
 
     def get_by_venue(self, venue: str, venue_symbol: str) -> Instrument | None:
+        """get_by_venue method"""
         with self._lock:
             return self._by_venue.get(venue, {}).get(venue_symbol)
 
@@ -73,6 +78,7 @@ class InstrumentManager:
         asset_type: AssetType | None = None,
         active_only: bool = True,
     ) -> list[Instrument]:
+        """find method"""
         with self._lock:
             results = list(self._instruments.values())
 
@@ -88,35 +94,42 @@ class InstrumentManager:
         return results
 
     def to_internal(self, venue: str, venue_symbol: str) -> str | None:
+        """to_internal method"""
         instrument = self.get_by_venue(venue, venue_symbol)
         return instrument.internal if instrument else None
 
     def to_venue_symbol(self, internal: str) -> str | None:
+        """to_venue_symbol method"""
         instrument = self.get(internal)
         return instrument.venue_symbol if instrument else None
 
     def all_internals(self) -> list[str]:
+        """all_internals method"""
         with self._lock:
             return list(self._instruments.keys())
 
     def all_venues(self) -> list[str]:
+        """all_venues method"""
         with self._lock:
             return list(self._by_venue.keys())
 
     def count(self) -> int:
+        """count method"""
         with self._lock:
             return len(self._instruments)
 
     def clear(self) -> None:
+        """clear method"""
         with self._lock:
             self._instruments.clear()
             self._by_venue.clear()
             self._by_underlying.clear()
 
 
-# 全局单例
+# 
 _instrument_manager = InstrumentManager()
 
 
 def get_instrument_manager() -> InstrumentManager:
+    """get_instrument_manager function"""
     return _instrument_manager

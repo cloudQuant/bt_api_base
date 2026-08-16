@@ -1,4 +1,4 @@
-"""订单类，用于确定订单的属性和方法。"""
+"""，。"""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from bt_api_base.containers.auto_init_mixin import AutoInitMixin
 
 
 class OrderStatus(Enum):
+    """Class OrderStatus"""
     SUBMITTED = "submitted"
     ACCEPTED = "new"
     PARTIAL = "partially_filled"
@@ -31,6 +32,7 @@ class OrderStatus(Enum):
 
     @classmethod
     def get_static_dict(cls) -> dict[str, OrderStatus]:
+        """get_static_dict method"""
         return {
             "submitted": cls.SUBMITTED,
             "accepted": cls.ACCEPTED,
@@ -52,18 +54,19 @@ class OrderStatus(Enum):
 
     @classmethod
     def from_value(cls, status_value: str | None) -> OrderStatus:
+        """from_value method"""
         if status_value is None:
             return cls.REJECTED
-        try:
-            return cls.get_static_dict()[status_value]
+        try: return cls.get_static_dict()[status_value]
         except KeyError as err:
             raise ValueError(f"Invalid order status value: {status_value}") from err
 
 
 class OrderData(AutoInitMixin):
-    """保存订单相关信息"""
+    """"""
 
     def __init__(self, order_info: Any, has_been_json_encoded: bool = False) -> None:
+        """__init__ method"""
         self.event = "OrderEvent"
         self.order_info = order_info
         self.has_been_json_encoded = has_been_json_encoded
@@ -105,13 +108,15 @@ class OrderData(AutoInitMixin):
         self.all_data: dict[str, Any] | None = None
 
     def get_event(self) -> str:
-        """# 事件类型"""
+        """# """
         return self.event
 
     def init_data(self) -> None | Self:
+        """init_data method"""
         raise NotImplementedError
 
     def get_all_data(self) -> dict[str, Any]:
+        """get_all_data method"""
         if self.all_data is None:
             self.all_data = {
                 "exchange_name": self.exchange_name,
@@ -154,133 +159,139 @@ class OrderData(AutoInitMixin):
         return self.all_data
 
     def get_exchange_name(self) -> str:
-        """# 交易所名称"""
+        """# """
         raise NotImplementedError
 
     def get_asset_type(self) -> str | None:
-        """# 资产类型"""
+        """# """
         raise NotImplementedError
 
     def get_symbol_name(self) -> str | None:
-        """# symbol名称"""
+        """# symbol"""
         raise NotImplementedError
 
     def get_server_time(self) -> float | None:
-        """# 服务器时间戳"""
+        """# """
         raise NotImplementedError
 
     def get_local_update_time(self) -> float | None:
-        """# 本地时间戳"""
+        """# """
         raise NotImplementedError
 
     def get_trade_id(self) -> str | None:
-        """# 交易所返回唯一成交id"""
+        """# id"""
         raise NotImplementedError
 
     def get_client_order_id(self) -> str | None:
-        """# 客户端自定订单ID"""
+        """# ID"""
         raise NotImplementedError
 
     def get_cum_quote(self) -> float | None:
-        """# 累计成交额"""
+        """# """
         raise NotImplementedError
 
     def get_executed_qty(self) -> float | None:
-        """# 已执行的成交量"""
+        """# """
         raise NotImplementedError
 
     def get_order_id(self) -> str | None:
-        """# 订单id"""
+        """# id"""
         raise NotImplementedError
 
     def get_order_size(self) -> float | None:
-        """# 订单原始数量"""
+        """# """
         raise NotImplementedError
 
     def get_order_price(self) -> float | None:
-        """# 订单价格"""
+        """# """
         raise NotImplementedError
 
     def get_reduce_only(self) -> bool | None:
-        """# 是否是只减仓单"""
+        """# """
         raise NotImplementedError
 
     def get_order_side(self) -> str | None:
-        """# 订单方向"""
+        """# """
         raise NotImplementedError
 
     def get_order_status(self) -> OrderStatus | str | None:
-        """# 订单状态"""
+        """# """
         raise NotImplementedError
 
     def get_order_symbol_name(self) -> str | None:
-        """# 品种"""
+        """# """
         raise NotImplementedError
 
     def get_order_time_in_force(self) -> str | None:
-        """# 订单有效期类型"""
+        """# """
         raise NotImplementedError
 
     def get_order_type(self) -> str | None:
-        """# 订单类型"""
+        """# """
         raise NotImplementedError
 
     def get_order_avg_price(self) -> float | None:
-        """# 平均价格"""
+        """# """
         raise NotImplementedError
 
     def get_origin_order_type(self) -> str | None:
-        """# 原始类型"""
+        """# """
         raise NotImplementedError
 
     def get_position_side(self) -> str | None:
-        """# 持仓方向"""
+        """# """
         raise NotImplementedError
 
     def get_trailing_stop_price(self) -> float | None:
-        """# 止损价"""
+        """# """
         raise NotImplementedError
 
     def get_trailing_stop_trigger_price(self) -> float | None:
-        """# 激活价格"""
+        """# """
         raise NotImplementedError
 
     def get_trailing_stop_callback_rate(self) -> float | None:
-        """# 回调比例"""
+        """# """
         raise NotImplementedError
 
     def get_trailing_stop_trigger_price_type(self) -> str | None:
-        """# 触发价类型"""
+        """# """
         raise NotImplementedError
 
     def get_stop_loss_price(self) -> float | None:
+        """get_stop_loss_price method"""
         raise NotImplementedError
 
     def get_stop_loss_trigger_price(self) -> float | None:
+        """get_stop_loss_trigger_price method"""
         raise NotImplementedError
 
     def get_stop_loss_trigger_price_type(self) -> str | None:
+        """get_stop_loss_trigger_price_type method"""
         raise NotImplementedError
 
     def get_take_profit_price(self) -> float | None:
+        """get_take_profit_price method"""
         raise NotImplementedError
 
     def get_take_profit_trigger_price(self) -> float | None:
+        """get_take_profit_trigger_price method"""
         raise NotImplementedError
 
     def get_take_profit_trigger_price_type(self) -> str | None:
+        """get_take_profit_trigger_price_type method"""
         raise NotImplementedError
 
     def get_close_position(self) -> bool | None:
-        """# 是否为触发平仓单; 仅在条件订单情况下会推送此字段"""
+        """# ; """
         raise NotImplementedError
 
     def get_order_offset(self) -> str | None:
-        """# 开平方向: open / close / close_today / close_yesterday"""
+        """# : open / close / close_today / close_yesterday"""
         return None
 
     def get_order_exchange_id(self) -> str | None:
-        """# 交易所代码, 如 'CFFEX', 'SHFE', 'SMART' 等"""
+        """# ,  'CFFEX', 'SHFE', 'SMART' """
         return None
 
     def __str__(self) -> str:

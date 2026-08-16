@@ -16,8 +16,7 @@ class RequestData:
     This class handles request data for API calls, including input data,
     extra data, status, and normalization functions.
 
-    Attributes:
-        event: Event type identifier.
+    Attributes: event: Event type identifier.
         input_data: Input data for the request.
         extra_data: Additional data for the request.
         data: Processed data list.
@@ -40,8 +39,7 @@ class RequestData:
     ) -> None:
         """Initialize request data container.
 
-        Args:
-            data: Input data for the request.
+        Args: data: Input data for the request.
             extra_data: Additional data for the request.
             status: Request status, defaults to False.
             normalize_func: Function to normalize input data, defaults to None.
@@ -79,48 +77,42 @@ class RequestData:
     def set_data(self, data: Any) -> None:
         """Set data to request.
 
-        Args:
-            data: Data to set.
+        Args: data: Data to set.
         """
         self.data = data
 
     def set_status(self, status: bool = True) -> None:
         """Set status of request.
 
-        Args:
-            status: Request status, defaults to True.
+        Args: status: Request status, defaults to True.
         """
         self.status = status
 
     def get_event(self) -> str:
         """Get event type from request data info.
 
-        Returns:
-            Event type string.
+        Returns: Event type string.
         """
         return self.event
 
     def get_request_type(self) -> str:
         """Get request type from request data info.
 
-        Returns:
-            Request type string.
+        Returns: Request type string.
         """
         return self.request_type
 
     def get_input_data(self) -> Any:
         """Get input data from request data info.
 
-        Returns:
-            Input data (str or dict).
+        Returns: Input data (str or dict).
         """
         return self.input_data
 
     def get_extra_data(self) -> dict[str, Any]:
         """Get extra data from request data info.
 
-        Returns:
-            Extra data dictionary.
+        Returns: Extra data dictionary.
         """
         return self.extra_data
 
@@ -129,8 +121,7 @@ class RequestData:
 
         Initializes data if not already done.
 
-        Returns:
-            Processed request data.
+        Returns: Processed request data.
         """
         if not self.has_been_init_data:
             self.init_data()
@@ -141,8 +132,7 @@ class RequestData:
 
         Initializes data if not already done.
 
-        Returns:
-            bool: True or False, None if not initialized.
+        Returns: bool: True or False, None if not initialized.
         """
         if not self.has_been_init_data:
             self.init_data()
@@ -151,23 +141,20 @@ class RequestData:
     def get_exchange_name(self) -> str:
         """Get exchange name.
 
-        Returns:
-            Exchange identifier.
+        Returns: Exchange identifier.
         """
         return self.exchange_name
 
     def get_symbol_name(self) -> str:
         """Get symbol name.
 
-        Returns:
-            Trading symbol name.
+        Returns: Trading symbol name.
         """
         return self.symbol_name or ""
 
     def get_asset_type(self) -> str:
         """Get asset type.
 
-        Returns:
-            Asset type.
+        Returns: Asset type.
         """
         return self.asset_type or ""

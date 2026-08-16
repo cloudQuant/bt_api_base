@@ -28,8 +28,7 @@ def _parse_env_int(name: str, default: int) -> int:
     value = os.environ.get(name)
     if value in (None, ""):
         return default
-    try:
-        return int(value)
+    try: return int(value)
     except ValueError:
         _get_logger().warning(f"Invalid integer env {name}={value!r}, using default {default}")
         return default
@@ -215,6 +214,7 @@ def update_extra_data(extra_data: dict[str, Any] | None, **kwargs: Any) -> dict[
 def from_dict_get_string(
     content: Mapping[Any, Any], key: Any, default: str | None = None
 ) -> str | None:
+    """from_dict_get_string function"""
     if key not in content:
         return default
     value = content[key]
@@ -224,6 +224,7 @@ def from_dict_get_string(
 def from_dict_get_bool(
     content: Mapping[Any, Any], key: Any, default: bool | None = None
 ) -> bool | None:
+    """from_dict_get_bool function"""
     if key not in content:
         return default
     value = content[key]
@@ -243,6 +244,7 @@ def from_dict_get_bool(
 def from_dict_get_float(
     content: Mapping[Any, Any], key: Any, default: float | None = None
 ) -> float | None:
+    """from_dict_get_float function"""
     if key not in content:
         return default
     value = content[key]
@@ -250,8 +252,7 @@ def from_dict_get_float(
         return None
     if isinstance(value, float):
         return value
-    try:
-        return float(value)
+    try: return float(value)
     except (TypeError, ValueError):
         return default
 
@@ -259,6 +260,7 @@ def from_dict_get_float(
 def from_dict_get_list(
     content: Mapping[Any, Any], key: Any, default: list | None = None
 ) -> list | None:
+    """from_dict_get_list function"""
     if key not in content:
         return default
     value = content[key]
@@ -274,6 +276,7 @@ def from_dict_get_list(
 def from_dict_get_int(
     content: Mapping[Any, Any], key: Any, default: int | None = None
 ) -> int | None:
+    """from_dict_get_int function"""
     if key not in content:
         return default
     value = content[key]
@@ -281,8 +284,7 @@ def from_dict_get_int(
         return None
     if isinstance(value, int):
         return value
-    try:
-        return int(value)
+    try: return int(value)
     except (TypeError, ValueError):
         return default
 

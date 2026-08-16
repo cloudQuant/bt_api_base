@@ -11,15 +11,18 @@ class _ServiceInterface:
 
 class _FirstService:
     def __init__(self) -> None:
+        """__init__ method"""
         self.name = "first"
 
 
 class _SecondService:
     def __init__(self) -> None:
+        """__init__ method"""
         self.name = "second"
 
 
 def test_register_singleton_replaces_cached_instance() -> None:
+    """test_register_singleton_replaces_cached_instance function"""
     container = DIContainer()
     container.register_singleton(_ServiceInterface, _FirstService)
     first = container.resolve(_ServiceInterface)
@@ -32,6 +35,7 @@ def test_register_singleton_replaces_cached_instance() -> None:
 
 
 def test_register_instance_overrides_previous_registration() -> None:
+    """test_register_instance_overrides_previous_registration function"""
     container = DIContainer()
     container.register_transient(_ServiceInterface, _FirstService)
 
@@ -43,6 +47,7 @@ def test_register_instance_overrides_previous_registration() -> None:
 
 
 def test_register_scoped_clears_previous_scope_instance() -> None:
+    """test_register_scoped_clears_previous_scope_instance function"""
     container = DIContainer()
     container.register_scoped(_ServiceInterface, _FirstService)
 

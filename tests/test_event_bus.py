@@ -9,7 +9,9 @@ from bt_api_base.exceptions import BtApiError
 
 
 class TestEventBus:
+    """Class TestEventBus"""
     def setup_method(self):
+        """setup_method method"""
         self.bus = EventBus()
         self.received = []
 
@@ -17,15 +19,18 @@ class TestEventBus:
         self.received.append(data)
 
     def test_on_and_emit(self):
+        """test_on_and_emit method"""
         self.bus.on("tick", self._handler)
         self.bus.emit("tick", {"price": 100})
         assert self.received == [{"price": 100}]
 
     def test_emit_no_handlers(self):
         # Should not raise
+        """test_emit_no_handlers method"""
         self.bus.emit("unknown_event", {})
 
     def test_multiple_handlers(self):
+        """test_multiple_handlers method"""
         h2_received = []
         self.bus.on("tick", self._handler)
         self.bus.on("tick", lambda d: h2_received.append(d))
@@ -34,18 +39,21 @@ class TestEventBus:
         assert h2_received == ["x"]
 
     def test_no_duplicate_registration(self):
+        """test_no_duplicate_registration method"""
         self.bus.on("tick", self._handler)
         self.bus.on("tick", self._handler)  # same handler again
         self.bus.emit("tick", 1)
         assert self.received == [1]  # only called once
 
     def test_off_removes_handler(self):
+        """test_off_removes_handler method"""
         self.bus.on("tick", self._handler)
         self.bus.off("tick", self._handler)
         self.bus.emit("tick", "should_not_receive")
         assert self.received == []
 
     def test_off_all_handlers(self):
+        """test_off_all_handlers method"""
         self.bus.on("tick", self._handler)
         self.bus.on("tick", lambda d: None)
         self.bus.off("tick")  # remove all
@@ -65,6 +73,7 @@ class TestEventBus:
         assert self.received == ["data"]
 
     def test_different_event_types_isolated(self):
+        """test_different_event_types_isolated method"""
         other = []
         self.bus.on("tick", self._handler)
         self.bus.on("order", lambda d: other.append(d))

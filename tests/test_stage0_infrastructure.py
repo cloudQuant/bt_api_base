@@ -1,16 +1,16 @@
 """
-Stage 0 基础设施测试
+Stage 0 
 
-覆盖:
-- AbstractVenueFeed Protocol 与 check_protocol_compliance
+:
+- AbstractVenueFeed Protocol  check_protocol_compliance
 - AsyncWrapperMixin
-- Capability 机制
+- Capability 
 - ConnectionMixin
-- Instrument 与 InstrumentFactory
+- Instrument  InstrumentFactory
 - InstrumentManager
-- Error Framework (统一错误码、错误翻译器)
+- Error Framework (、)
 - RateLimiter
-- Config Loader (pydantic schema 校验)
+- Config Loader (pydantic schema )
 """
 
 from __future__ import annotations
@@ -25,19 +25,21 @@ import pytest
 
 
 class TestAbstractVenueFeed:
+    """Class TestAbstractVenueFeed"""
     def test_protocol_is_runtime_checkable(self):
+        """test_protocol_is_runtime_checkable method"""
         from bt_api_base.feeds.abstract_feed import AbstractVenueFeed
 
-        # Protocol 本身应可被 isinstance 检查
+        # Protocol  isinstance 
         assert hasattr(AbstractVenueFeed, "__protocol_attrs__") or True  # runtime_checkable
 
     def test_check_protocol_compliance_on_feed(self):
-        """Feed 基类应满足大部分协议方法"""
+        """Feed """
         from bt_api_base.feeds.abstract_feed import check_protocol_compliance
         from bt_api_base.feeds.feed import Feed
 
         missing = check_protocol_compliance(Feed)
-        # Feed 现在应包含所有核心方法
+        # Feed 
         assert "connect" not in missing
         assert "disconnect" not in missing
         assert "is_connected" not in missing
@@ -48,11 +50,13 @@ class TestAbstractVenueFeed:
         assert "get_position" not in missing
 
     def test_check_protocol_compliance_on_incomplete_class(self):
-        """不完整的类应报告缺失方法"""
+        """"""
         from bt_api_base.feeds.abstract_feed import check_protocol_compliance
 
         class IncompleteClass:
+            """Class IncompleteClass"""
             def get_tick(self, symbol, extra_data=None, **kwargs):
+                """get_tick method"""
                 pass
 
         missing = check_protocol_compliance(IncompleteClass)
@@ -62,12 +66,15 @@ class TestAbstractVenueFeed:
 
 
 class TestAsyncWrapperMixin:
+    """Class TestAsyncWrapperMixin"""
     def test_async_wrapper_wraps_sync_method(self):
-        """AsyncWrapperMixin 应将同步方法包装为异步"""
+        """AsyncWrapperMixin """
         from bt_api_base.feeds.abstract_feed import AsyncWrapperMixin
 
         class MockFeed(AsyncWrapperMixin):
+            """Class MockFeed"""
             def get_tick(self, symbol, extra_data=None, **kwargs):
+                """get_tick method"""
                 return {"symbol": symbol, "price": 42000.0}
 
         feed = MockFeed()
@@ -76,9 +83,11 @@ class TestAsyncWrapperMixin:
         assert result["price"] == 42000.0
 
     def test_async_wrapper_make_order(self):
+        """test_async_wrapper_make_order method"""
         from bt_api_base.feeds.abstract_feed import AsyncWrapperMixin
 
         class MockFeed(AsyncWrapperMixin):
+            """Class MockFeed"""
             def make_order(
                 self,
                 symbol,
@@ -91,6 +100,7 @@ class TestAsyncWrapperMixin:
                 extra_data=None,
                 **kwargs,
             ):
+                """make_order method"""
                 return {"order_id": "12345", "symbol": symbol}
 
         feed = MockFeed()
@@ -104,10 +114,12 @@ class TestAsyncWrapperMixin:
 
 
 class TestCapability:
+    """Class TestCapability"""
     def test_capability_enum_completeness(self):
+        """test_capability_enum_completeness method"""
         from bt_api_base.feeds.capability import Capability
 
-        # 至少包含核心能力
+        # 
         assert Capability.MAKE_ORDER.value == "make_order"
         assert Capability.GET_TICK.value == "get_tick"
         assert Capability.GET_BALANCE.value == "get_balance"
@@ -115,9 +127,11 @@ class TestCapability:
         assert Capability.HEDGE_MODE.value == "hedge_mode"
 
     def test_capability_mixin(self):
+        """test_capability_mixin method"""
         from bt_api_base.feeds.capability import Capability, CapabilityMixin, NotSupportedError
 
         class MockFeed(CapabilityMixin):
+            """Class MockFeed"""
             exchange_name = "test"
 
             @classmethod
@@ -129,13 +143,14 @@ class TestCapability:
         assert feed.has_capability(Capability.MAKE_ORDER)
         assert not feed.has_capability(Capability.HEDGE_MODE)
 
-        # require 不支持的能力应抛异常
+        # require 
         with pytest.raises(NotSupportedError) as exc_info:
             feed.require_capability(Capability.HEDGE_MODE)
         assert "hedge_mode" in str(exc_info.value)
         assert "test" in str(exc_info.value)
 
     def test_not_supported_error_message(self):
+        """test_not_supported_error_message method"""
         from bt_api_base.feeds.capability import Capability, NotSupportedError
 
         err = NotSupportedError(Capability.BATCH_ORDER, "Binance")
@@ -149,7 +164,9 @@ class TestCapability:
 
 
 class TestConnectionMixin:
+    """Class TestConnectionMixin"""
     def test_default_state_is_disconnected(self):
+        """test_default_state_is_disconnected method"""
         from bt_api_base.feeds.connection_mixin import ConnectionMixin, FeedConnectionState
 
         mixin = ConnectionMixin()
@@ -158,6 +175,7 @@ class TestConnectionMixin:
         assert not mixin.is_connected()
 
     def test_connect_disconnect_lifecycle(self):
+        """test_connect_disconnect_lifecycle method"""
         from bt_api_base.feeds.connection_mixin import ConnectionMixin, FeedConnectionState
 
         mixin = ConnectionMixin()
@@ -172,6 +190,7 @@ class TestConnectionMixin:
         assert not mixin.is_connected()
 
     def test_authenticated_is_also_connected(self):
+        """test_authenticated_is_also_connected method"""
         from bt_api_base.feeds.connection_mixin import ConnectionMixin, FeedConnectionState
 
         mixin = ConnectionMixin()
@@ -186,7 +205,9 @@ class TestConnectionMixin:
 
 
 class TestInstrument:
+    """Class TestInstrument"""
     def test_instrument_creation(self):
+        """test_instrument_creation method"""
         from bt_api_base.containers.instrument import AssetType, Instrument
 
         inst = Instrument(
@@ -202,7 +223,7 @@ class TestInstrument:
         assert not inst.is_expired
 
     def test_instrument_frozen(self):
-        """Instrument 应为不可变"""
+        """Instrument """
         from bt_api_base.containers.instrument import AssetType, Instrument
 
         inst = Instrument(
@@ -215,6 +236,7 @@ class TestInstrument:
             inst.internal = "ETH-USDT"
 
     def test_with_params(self):
+        """test_with_params method"""
         from bt_api_base.containers.instrument import AssetType, Instrument
 
         inst = Instrument(
@@ -225,63 +247,69 @@ class TestInstrument:
         )
         new_inst = inst.with_params(status="suspend")
         assert new_inst.status == "suspend"
-        assert inst.status == "active"  # 原实例不变
+        assert inst.status == "active"  # 
 
 
 class TestInstrumentFactory:
+    """Class TestInstrumentFactory"""
     def test_binance_btcusdt(self):
+        """test_binance_btcusdt method"""
         from bt_api_base.containers.instrument import AssetType, InstrumentFactory
 
         inst = InstrumentFactory.from_venue("BINANCE___SWAP", "BTCUSDT", AssetType.SWAP)
         assert inst.internal == "BTC-USDT"
 
     def test_binance_dogeusdt(self):
-        """变长 base 货币（DOGE 4字符 + USDT 4字符 → 不能用 [-4]）"""
+        """ base （DOGE 4 + USDT 4 →  [-4]）"""
         from bt_api_base.containers.instrument import AssetType, InstrumentFactory
 
         inst = InstrumentFactory.from_venue("BINANCE___SPOT", "DOGEUSDT", AssetType.SPOT)
         assert inst.internal == "DOGE-USDT"
 
     def test_binance_shibusdt(self):
+        """test_binance_shibusdt method"""
         from bt_api_base.containers.instrument import AssetType, InstrumentFactory
 
         inst = InstrumentFactory.from_venue("BINANCE___SPOT", "SHIBUSDT", AssetType.SPOT)
         assert inst.internal == "SHIB-USDT"
 
     def test_binance_btcusd(self):
+        """test_binance_btcusd method"""
         from bt_api_base.containers.instrument import AssetType, InstrumentFactory
 
         inst = InstrumentFactory.from_venue("BINANCE___SWAP", "BTCUSD", AssetType.SWAP)
         assert inst.internal == "BTC-USD"
 
     def test_okx_dash_format(self):
-        """OKX 使用 - 分隔符"""
+        """OKX  - """
         from bt_api_base.containers.instrument import AssetType, InstrumentFactory
 
         inst = InstrumentFactory.from_venue("OKX___SWAP", "BTC-USDT-SWAP", AssetType.SWAP)
         assert inst.internal == "BTC-USDT-SWAP"
 
     def test_ctp_future(self):
-        """CTP 期货合约不应被 crypto 解析"""
+        """CTP  crypto """
         from bt_api_base.containers.instrument import AssetType, InstrumentFactory
 
         inst = InstrumentFactory.from_venue("CTP___FUTURE", "IF2506", AssetType.FUTURE)
         assert inst.internal == "IF2506"
 
     def test_ib_stock(self):
-        """IB 股票不应被 crypto 解析"""
+        """IB  crypto """
         from bt_api_base.containers.instrument import AssetType, InstrumentFactory
 
         inst = InstrumentFactory.from_venue("IB___STK", "AAPL", AssetType.STK)
         assert inst.internal == "AAPL"
 
     def test_underscore_separator(self):
+        """test_underscore_separator method"""
         from bt_api_base.containers.instrument import AssetType, InstrumentFactory
 
         inst = InstrumentFactory.from_venue("TEST", "BTC_USDT", AssetType.SPOT)
         assert inst.internal == "BTC-USDT"
 
     def test_slash_separator(self):
+        """test_slash_separator method"""
         from bt_api_base.containers.instrument import AssetType, InstrumentFactory
 
         inst = InstrumentFactory.from_venue("TEST", "BTC/USDT", AssetType.SPOT)
@@ -289,7 +317,9 @@ class TestInstrumentFactory:
 
 
 class TestInstrumentManager:
+    """Class TestInstrumentManager"""
     def test_register_and_get(self):
+        """test_register_and_get method"""
         from bt_api_base.containers.instrument import AssetType, Instrument
         from bt_api_base.instrument_manager import InstrumentManager
 
@@ -307,6 +337,7 @@ class TestInstrumentManager:
         assert mgr.count() == 1
 
     def test_to_internal_and_venue(self):
+        """test_to_internal_and_venue method"""
         from bt_api_base.containers.instrument import AssetType, Instrument
         from bt_api_base.instrument_manager import InstrumentManager
 
@@ -324,6 +355,7 @@ class TestInstrumentManager:
         assert mgr.to_internal("BINANCE___SPOT", "UNKNOWN") is None
 
     def test_find_by_venue(self):
+        """test_find_by_venue method"""
         from bt_api_base.containers.instrument import AssetType, Instrument
         from bt_api_base.instrument_manager import InstrumentManager
 
@@ -356,7 +388,9 @@ class TestInstrumentManager:
 
 
 class TestErrorFramework:
+    """Class TestErrorFramework"""
     def test_unified_error_str(self):
+        """test_unified_error_str method"""
         from bt_api_base.error import ErrorCategory, UnifiedError, UnifiedErrorCode
 
         err = UnifiedError(
@@ -369,6 +403,7 @@ class TestErrorFramework:
         assert "RATE_LIMIT_EXCEEDED" in str(err)
 
     def test_unified_error_to_dict(self):
+        """test_unified_error_to_dict method"""
         from bt_api_base.error import ErrorCategory, UnifiedError, UnifiedErrorCode
 
         err = UnifiedError(
@@ -383,6 +418,7 @@ class TestErrorFramework:
         assert d["venue"] == "OKX"
 
     def test_unified_error_is_exception(self):
+        """test_unified_error_is_exception method"""
         from bt_api_base.error import ErrorCategory, UnifiedError, UnifiedErrorCode
         from bt_api_base.exceptions import BtApiError
 
@@ -396,6 +432,7 @@ class TestErrorFramework:
         assert isinstance(err, Exception)
 
     def test_rate_limit_error(self):
+        """test_rate_limit_error method"""
         from bt_api_base.error import UnifiedErrorCode, UnifiedRateLimitError
 
         err = UnifiedRateLimitError(venue="BINANCE")
@@ -404,6 +441,7 @@ class TestErrorFramework:
 
     @pytest.mark.skip(reason="BinanceErrorTranslator requires bt_api_binance plugin")
     def test_binance_translator(self):
+        """test_binance_translator method"""
         from bt_api_base.error import BinanceErrorTranslator, UnifiedErrorCode
 
         # -1003: rate limit
@@ -433,6 +471,7 @@ class TestErrorFramework:
         assert err.code == UnifiedErrorCode.INVALID_API_KEY
 
     def test_okx_translator(self):
+        """test_okx_translator method"""
         from bt_api_base.error import OKXErrorTranslator, UnifiedErrorCode
 
         # Success returns None
@@ -445,24 +484,27 @@ class TestErrorFramework:
 
     @pytest.mark.skip(reason="CTPErrorTranslator not implemented in bt_api_base.error")
     def test_ctp_translator(self):
+        """test_ctp_translator method"""
         from bt_api_base.error import CTPErrorTranslator, UnifiedErrorCode
 
         # Success returns None
-        result = CTPErrorTranslator.translate({"code": 0, "msg": "成功"}, "CTP")
+        result = CTPErrorTranslator.translate({"code": 0, "msg": ""}, "CTP")
         assert result is None
 
         # Network disconnect
-        err = CTPErrorTranslator.translate({"code": -1, "msg": "网络连接失败"}, "CTP")
+        err = CTPErrorTranslator.translate({"code": -1, "msg": ""}, "CTP")
         assert err.code == UnifiedErrorCode.NETWORK_DISCONNECTED
 
     @pytest.mark.skip(reason="BinanceErrorTranslator requires bt_api_binance plugin")
     def test_http_status_fallback(self):
+        """test_http_status_fallback method"""
         from bt_api_base.error import BinanceErrorTranslator, UnifiedErrorCode
 
         err = BinanceErrorTranslator.translate({"status": 429, "msg": "Rate limited"}, "BINANCE")
         assert err.code == UnifiedErrorCode.RATE_LIMIT_EXCEEDED
 
     def test_error_module_lazy_export_invalid_name(self):
+        """test_error_module_lazy_export_invalid_name method"""
         import bt_api_base.error as error_module
 
         with pytest.raises(AttributeError):
@@ -475,13 +517,16 @@ class TestErrorFramework:
 
 
 class TestRateLimiter:
+    """Class TestRateLimiter"""
     def test_empty_limiter_always_allows(self):
+        """test_empty_limiter_always_allows method"""
         from bt_api_base.rate_limiter import RateLimiter
 
         limiter = RateLimiter()
         assert limiter.acquire("GET", "/api/v3/ticker")
 
     def test_sliding_window_basic(self):
+        """test_sliding_window_basic method"""
         from bt_api_base.rate_limiter import RateLimiter, RateLimitRule, RateLimitScope, RateLimitType
 
         rules = [
@@ -500,6 +545,7 @@ class TestRateLimiter:
         assert not limiter.acquire()  # 4th should fail
 
     def test_fixed_window_basic(self):
+        """test_fixed_window_basic method"""
         from bt_api_base.rate_limiter import RateLimiter, RateLimitRule, RateLimitScope, RateLimitType
 
         rules = [
@@ -517,6 +563,7 @@ class TestRateLimiter:
         assert not limiter.acquire()
 
     def test_endpoint_matching(self):
+        """test_endpoint_matching method"""
         from bt_api_base.rate_limiter import RateLimiter, RateLimitRule, RateLimitScope, RateLimitType
 
         rules = [
@@ -530,14 +577,15 @@ class TestRateLimiter:
             ),
         ]
         limiter = RateLimiter(rules)
-        # 匹配的端点受限
+        # 
         assert limiter.acquire("POST", "/api/v3/order")
         assert limiter.acquire("POST", "/api/v3/order")
         assert not limiter.acquire("POST", "/api/v3/order")
-        # 不匹配的端点不受限
+        # 
         assert limiter.acquire("GET", "/api/v3/ticker")
 
     def test_weight_map(self):
+        """test_weight_map method"""
         from bt_api_base.rate_limiter import RateLimiter, RateLimitRule, RateLimitScope, RateLimitType
 
         rules = [
@@ -556,6 +604,7 @@ class TestRateLimiter:
         assert not limiter.acquire("POST", "/order")  # 15 > 10
 
     def test_get_status(self):
+        """test_get_status method"""
         from bt_api_base.rate_limiter import RateLimiter, RateLimitRule, RateLimitType
 
         rules = [
@@ -577,7 +626,9 @@ class TestRateLimiter:
 
 
 class TestConfigLoader:
+    """Class TestConfigLoader"""
     def test_cex_must_have_base_urls(self):
+        """test_cex_must_have_base_urls method"""
         from pydantic import ValidationError
 
         from bt_api_base.config_loader import (
@@ -593,11 +644,11 @@ class TestConfigLoader:
                 display_name="Test",
                 venue_type=VenueType.CEX,
                 connection=ConnectionConfig(type=ConnectionType.HTTP),
-                base_urls=None,  # CEX 必须有
+                base_urls=None,  # CEX 
             )
 
     def test_broker_can_have_base_urls(self):
-        """DEX/Broker 可选 base_urls（不再报错）"""
+        """DEX/Broker  base_urls（）"""
         from bt_api_base.config_loader import (
             BaseUrlsConfig,
             ConnectionConfig,
@@ -616,6 +667,7 @@ class TestConfigLoader:
         assert config.base_urls.rest["main"] == "https://localhost:5000"
 
     def test_broker_without_base_urls(self):
+        """test_broker_without_base_urls method"""
         from bt_api_base.config_loader import (
             ConnectionConfig,
             ConnectionType,
@@ -633,6 +685,7 @@ class TestConfigLoader:
 
     def test_cex_must_use_http_ws_or_spi(self):
         # TWS is not allowed for CEX
+        """test_cex_must_use_http_ws_or_spi method"""
         from pydantic import ValidationError
 
         from bt_api_base.config_loader import (
@@ -668,7 +721,9 @@ class TestConfigLoader:
 
 
 class TestFeedProtocolCompliance:
+    """Class TestFeedProtocolCompliance"""
     def test_feed_has_connect_disconnect(self):
+        """test_feed_has_connect_disconnect method"""
         from bt_api_base.feeds.feed import Feed
 
         assert hasattr(Feed, "connect")
@@ -676,23 +731,25 @@ class TestFeedProtocolCompliance:
         assert hasattr(Feed, "is_connected")
 
     def test_feed_has_capabilities(self):
+        """test_feed_has_capabilities method"""
         from bt_api_base.feeds.feed import Feed
 
         assert hasattr(Feed, "capabilities")
 
     def test_feed_has_position_methods(self):
+        """test_feed_has_position_methods method"""
         from bt_api_base.feeds.feed import Feed
 
         assert hasattr(Feed, "get_position")
         assert hasattr(Feed, "async_get_position")
 
     def test_feed_protocol_compliance(self):
-        """Feed 应通过协议合规检查"""
+        """Feed """
         from bt_api_base.feeds.abstract_feed import check_protocol_compliance
         from bt_api_base.feeds.feed import Feed
 
         missing = check_protocol_compliance(Feed)
-        # 只要核心方法都在就行
+        # 
         core = {
             "connect",
             "disconnect",

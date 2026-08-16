@@ -110,8 +110,10 @@ class TestEventService:
 
 
 class TestConnectionService:
+    """Class TestConnectionService"""
     @pytest.mark.asyncio
     async def test_close_all_resets_active_connection_stats(self):
+        """test_close_all_resets_active_connection_stats method"""
         service = ConnectionService()
         session = _Closable()
         service._pools["BINANCE___SPOT"] = {"session": session}
@@ -124,6 +126,7 @@ class TestConnectionService:
 
     @pytest.mark.asyncio
     async def test_get_connection_raises_clear_error_for_unconfigured_pool(self):
+        """test_get_connection_raises_clear_error_for_unconfigured_pool method"""
         service = ConnectionService()
 
         with pytest.raises(
@@ -135,6 +138,7 @@ class TestConnectionService:
 
     @pytest.mark.asyncio
     async def test_release_connection_ignores_unmanaged_object(self):
+        """test_release_connection_ignores_unmanaged_object method"""
         service = ConnectionService()
         managed_connection = object()
         service._pools["BINANCE___SPOT"] = {"session": managed_connection}
@@ -151,71 +155,89 @@ class TestConnectionService:
 
 class _Closable:
     def __init__(self) -> None:
+        """__init__ method"""
         self.closed = False
 
     async def close(self) -> None:
+        """close method"""
         self.closed = True
 
 
 class _StubConnectionManager:
     def __init__(self) -> None:
+        """__init__ method"""
         self.connections_requested: list[str] = []
         self.released: list[tuple[str, object]] = []
         self.connection = object()
 
     async def get_connection(self, exchange_name: str) -> object:
+        """get_connection method"""
         self.connections_requested.append(exchange_name)
         return self.connection
 
     async def release_connection(self, exchange_name: str, connection: object) -> None:
+        """release_connection method"""
         self.released.append((exchange_name, connection))
 
 
 class _StubCache:
     def __init__(self) -> None:
+        """__init__ method"""
         self.data: dict[str, object] = {}
         self.set_calls: list[tuple[str, object, int | None]] = []
 
     async def get(self, key: str) -> object | None:
+        """get method"""
         return self.data.get(key)
 
     async def set(self, key: str, value: object, ttl: int | None = None) -> None:
+        """set method"""
         self.data[key] = value
         self.set_calls.append((key, value, ttl))
 
     async def delete(self, key: str) -> None:
+        """delete method"""
         self.data.pop(key, None)
 
     async def clear(self) -> None:
+        """clear method"""
         self.data.clear()
 
 
 class _StubRateLimiter:
     def __init__(self) -> None:
+        """__init__ method"""
         self.configured: list[tuple[str, int, float]] = []
         self.acquired: list[tuple[str, int]] = []
 
     def configure_limit(self, resource: str, max_requests: int, time_window: float) -> None:
+        """configure_limit method"""
         self.configured.append((resource, max_requests, time_window))
 
     async def acquire(self, resource: str, tokens: int = 1) -> None:
+        """acquire method"""
         self.acquired.append((resource, tokens))
 
 
 class _StubEventBus:
     def __init__(self) -> None:
+        """__init__ method"""
         self.events: list[tuple[str, object]] = []
 
     def publish(self, event_type: str, data: object) -> None:
+        """publish method"""
         self.events.append((event_type, data))
 
     async def publish_async(self, event_type: str, data: object) -> None:
+        """publish_async method"""
         self.events.append((event_type, data))
 
 
 class TestDomainServices:
+    """Class TestDomainServices"""
     @pytest.mark.asyncio
     async def test_market_data_service_uses_cache_before_connection(self):
+        """test_market_data_service_uses_cache_before_connection method"""
         connection_manager = _StubConnectionManager()
         cache = _StubCache()
         rate_limiter = _StubRateLimiter()
@@ -237,6 +259,7 @@ class TestDomainServices:
 
     @pytest.mark.asyncio
     async def test_trading_service_places_order_and_releases_connection(self):
+        """test_trading_service_places_order_and_releases_connection method"""
         connection_manager = _StubConnectionManager()
         rate_limiter = _StubRateLimiter()
         event_bus = _StubEventBus()
@@ -262,6 +285,7 @@ class TestDomainServices:
 
     @pytest.mark.asyncio
     async def test_account_service_reads_cache_before_connection(self):
+        """test_account_service_reads_cache_before_connection method"""
         connection_manager = _StubConnectionManager()
         cache = _StubCache()
         event_bus = _StubEventBus()

@@ -1,3 +1,4 @@
+"""Module documentation"""
 from __future__ import annotations
 
 import datetime
@@ -30,7 +31,9 @@ _PROXY_ENV_KEYS = (
 
 
 class MyWebsocketApp:
+    """Class MyWebsocketApp"""
     def __init__(self, data_queue: Any = None, **kwargs: Any) -> None:
+        """__init__ method"""
         self.ws: websocket.WebSocketApp | None = None
         self.data_queue = data_queue
         self.wss_name = kwargs.get("wss_name", "default_name")
@@ -69,27 +72,29 @@ class MyWebsocketApp:
         default_log = get_project_log_path("my_websocket_app.log")
         self.log_file_name = kwargs.get("log_file_name", default_log)
         self.wss_logger = get_logger("unknown")
-        self._running_flag = False  # 阻塞，防止短时间连接数超限
-        self._restart_flag = True  # 默认重启
+        self._running_flag = False  # ，
+        self._restart_flag = True  # 
         self.process = threading.Thread(target=self.run, daemon=True)
 
-        # ── 指数退避重连参数 ──────────────────────────────────────
+        # ──  ──────────────────────────────────────
         self._reconnect_base_delay = kwargs.get("reconnect_base_delay", 1.0)
         self._reconnect_max_delay = kwargs.get("reconnect_max_delay", 60.0)
-        self._max_reconnect_attempts = kwargs.get("max_reconnect_attempts", 0)  # 0=无限
+        self._max_reconnect_attempts = kwargs.get("max_reconnect_attempts", 0)  # 0=
         self._reconnect_attempt = 0
         self._current_delay = self._reconnect_base_delay
 
-        # ── EventBus 支持（可选） ────────────────────────────────
+        # ── EventBus （） ────────────────────────────────
         self._event_bus = kwargs.get("event_bus")
 
     # noinspection PyMethodMayBeStatic
     def get_timestamp(self, time_str) -> Any:
+        """get_timestamp method"""
         dt = datetime.datetime.strptime(time_str, "%Y-%m-%dT%H:%M:%S.%fZ")
         timestamp = int((time.mktime(dt.timetuple()) + dt.microsecond / 1000000) * 1000)
         return timestamp
 
     def subscribe(self, **kwargs):
+        """subscribe method"""
         if self._params is None:
             raise ValueError("exchange_data (params) is required for subscribe")
         req = self._params.get_wss_path(**kwargs)
@@ -99,7 +104,7 @@ class MyWebsocketApp:
         # time.sleep(0.3)
 
     def _emit_event(self, event_type, **payload):
-        """通过 EventBus 发送 WebSocket 状态事件（如果已配置）."""
+        """ EventBus  WebSocket （）."""
         if self._event_bus is not None:
             self._event_bus.emit(
                 event_type,
@@ -111,18 +116,19 @@ class MyWebsocketApp:
             )
 
     def _backoff_delay(self):
-        """计算指数退避延迟（带抖动），并更新下次延迟."""
+        """（），."""
         jitter = random.uniform(0, self._current_delay * 0.1)
         delay = min(self._current_delay + jitter, self._reconnect_max_delay)
         self._current_delay = min(self._current_delay * 2, self._reconnect_max_delay)
         return delay
 
     def _reset_backoff(self):
-        """连接成功后重置退避计数器."""
+        """."""
         self._reconnect_attempt = 0
         self._current_delay = self._reconnect_base_delay
 
     def on_open(self, _ws):
+        """on_open method"""
         try:
             self.open_rsp()
         except Exception as e:
@@ -132,9 +138,11 @@ class MyWebsocketApp:
         self._emit_event("ws.connected")
 
     def open_rsp(self):
+        """open_rsp method"""
         pass
 
     def on_message(self, _ws, message):
+        """on_message method"""
         try:
             self.message_rsp(message)
         except Exception as e:
@@ -142,9 +150,11 @@ class MyWebsocketApp:
 
     # noinspection PyMethodMayBeStatic
     def message_rsp(self, message):
+        """message_rsp method"""
         self.wss_logger.debug(message)
 
     def on_error(self, _ws, error):
+        """on_error method"""
         try:
             self.error_rsp(f"error: {error}")
         except Exception as e:
@@ -153,9 +163,11 @@ class MyWebsocketApp:
 
     # noinspection PyMethodMayBeStatic
     def error_rsp(self, error):
+        """error_rsp method"""
         self.wss_logger.warning(f"name: {self.wss_name}, url: {self.wss_url}, error: {error}")
 
     def on_close(self, _ws, _close_status_code, _close_msg):
+        """on_close method"""
         self._running_flag = False
         self._emit_event("ws.disconnected", code=_close_status_code, msg=_close_msg)
         try:
@@ -164,6 +176,7 @@ class MyWebsocketApp:
             self.wss_logger.warning(f"{self.wss_name},{self.wss_url},{e},{traceback.format_exc()}")
 
     def on_ping(self, _ws, ping):
+        """on_ping method"""
         self.wss_logger.info(
             f"===== {time.strftime('%Y-%m-%d %H:%M:%S')} Websocket ping {ping} ====="
         )
@@ -171,12 +184,14 @@ class MyWebsocketApp:
             self.ws.sock.pong(ping)
 
     def on_pong(self, _ws, pong):
+        """on_pong method"""
         self.wss_logger.info(
             f"===== {time.strftime('%Y-%m-%d %H:%M:%S')} Websocket pong {pong} ====="
         )
 
     # noinspection PyMethodMayBeStatic
     def close_rsp(self, _is_restart):
+        """close_rsp method"""
         self._restart_flag = False
         self.wss_logger.info(
             f"===== {time.strftime('%Y-%m-%d %H:%M:%S')} Websocket Disconnected ====="
@@ -200,9 +215,10 @@ class MyWebsocketApp:
         )
 
     def run(self):
-        # websocket.enableTrace(True)  # 调试
-        # 设置超时
+        # websocket.enableTrace(True)  # 
+        # 
         # print("run begin")
+        """run method"""
         websocket.setdefaulttimeout(self.ping_timeout)
         if self.wss_url is None:
             raise ValueError("wss_url is required for WebSocket connection")
@@ -216,7 +232,7 @@ class MyWebsocketApp:
             on_pong=self.on_pong,
         )
         while True:
-            # 检查最大重连次数
+            # 
             if (
                 self._max_reconnect_attempts > 0
                 and self._reconnect_attempt >= self._max_reconnect_attempts
@@ -249,7 +265,7 @@ class MyWebsocketApp:
                     f"{self.wss_name},{self.wss_url},{e},{traceback.format_exc()}"
                 )
 
-            # 指数退避重连延迟
+            # 
             self._reconnect_attempt += 1
             delay = self._backoff_delay()
             self._emit_event("ws.reconnecting", attempt=self._reconnect_attempt, delay=delay)
@@ -259,6 +275,7 @@ class MyWebsocketApp:
             time.sleep(delay)
 
     def start(self, connect_timeout=30):
+        """start method"""
         self.process = threading.Thread(target=self.run, daemon=True)
         self.process.start()
         _elapsed: float = 0.0
@@ -277,26 +294,28 @@ class MyWebsocketApp:
                     f"{self._params.exchange_name} Websocket Connect Timeout ({connect_timeout}s)! ====="
                 )
                 break
-        # 重启定时器
+        # 
         if self.restart_gap:
             restart_timer = threading.Thread(target=self.restart_timer)
             restart_timer.start()
 
     def restart(self):
-        # 重启直接关闭ws, 然后创建新的ws
-        self.wss_logger.info(f"===== {time.strftime('%Y-%m-%d %H:%M:')}, 重启ws")
+        # ws, ws
+        """restart method"""
+        self.wss_logger.info(f"===== {time.strftime('%Y-%m-%d %H:%M:')}, ws")
         self.stop()
-        # 创建新的ws
+        # ws
         self.start()
 
     def stop(self):
+        """stop method"""
         self._restart_flag = False
         if self.ws is not None:
             self.ws.close()
             self.ws = None
 
     def restart_timer(self):
-        """重启定时器."""
+        """."""
         time_gap = self.restart_gap
         while True:
             time.sleep(time_gap)

@@ -11,57 +11,74 @@ from bt_api_base.containers.orderbooks import OrderBookData
 
 class _SampleFundingRate(FundingRateData):
     def init_data(self) -> _SampleFundingRate:
+        """init_data method"""
         self.exchange_name = "BINANCE"
         self.symbol_name = "BTCUSDT"
         self.current_funding_rate = 0.001
         return self
 
     def get_exchange_name(self) -> str:
+        """get_exchange_name method"""
         return "BINANCE"
 
     def get_server_time(self) -> float | None:
+        """get_server_time method"""
         return None
 
     def get_local_update_time(self) -> float | None:
+        """get_local_update_time method"""
         return None
 
     def get_asset_type(self) -> str | None:
+        """get_asset_type method"""
         return "SWAP"
 
     def get_symbol_name(self) -> str | None:
+        """get_symbol_name method"""
         return "BTCUSDT"
 
     def get_pre_funding_rate(self) -> float | None:
+        """get_pre_funding_rate method"""
         return None
 
     def get_pre_funding_time(self) -> float | None:
+        """get_pre_funding_time method"""
         return None
 
     def get_next_funding_rate(self) -> float | None:
+        """get_next_funding_rate method"""
         return None
 
     def get_next_funding_time(self) -> float | None:
+        """get_next_funding_time method"""
         return None
 
     def get_max_funding_rate(self) -> float | None:
+        """get_max_funding_rate method"""
         return None
 
     def get_min_funding_rate(self) -> float | None:
+        """get_min_funding_rate method"""
         return None
 
     def get_current_funding_rate(self) -> float | None:
+        """get_current_funding_rate method"""
         return 0.001
 
     def get_current_funding_time(self) -> float | None:
+        """get_current_funding_time method"""
         return None
 
     def get_settlement_funding_rate(self) -> float | None:
+        """get_settlement_funding_rate method"""
         return None
 
     def get_settlement_status(self) -> str | None:
+        """get_settlement_status method"""
         return None
 
     def get_method(self) -> str | None:
+        """get_method method"""
         return None
 
     def __str__(self) -> str:
@@ -73,24 +90,30 @@ class _SampleFundingRate(FundingRateData):
 
 class _SampleMarkPrice(MarkPriceData):
     def init_data(self) -> _SampleMarkPrice:
+        """init_data method"""
         self.exchange_name = "BINANCE"
         self.symbol_name = "BTCUSDT"
         self.mark_price = 1.0
         return self
 
     def get_exchange_name(self) -> str:
+        """get_exchange_name method"""
         return "BINANCE"
 
     def get_server_time(self) -> float | None:
+        """get_server_time method"""
         return None
 
     def get_local_update_time(self) -> float | None:
+        """get_local_update_time method"""
         return None
 
     def get_symbol_name(self) -> str | None:
+        """get_symbol_name method"""
         return "BTCUSDT"
 
     def get_mark_price(self) -> float | None:
+        """get_mark_price method"""
         return 1.0
 
     def __str__(self) -> str:
@@ -102,42 +125,54 @@ class _SampleMarkPrice(MarkPriceData):
 
 class _SampleOrderBook(OrderBookData):
     def init_data(self) -> _SampleOrderBook:
+        """init_data method"""
         self.exchange_name = "BINANCE"
         self.symbol_name = "BTCUSDT"
         self.bid_price_list = [1.0]
         return self
 
     def get_exchange_name(self) -> str:
+        """get_exchange_name method"""
         return "BINANCE"
 
     def get_local_update_time(self) -> float | None:
+        """get_local_update_time method"""
         return None
 
     def get_symbol_name(self) -> str | None:
+        """get_symbol_name method"""
         return "BTCUSDT"
 
     def get_asset_type(self) -> str | None:
+        """get_asset_type method"""
         return "SPOT"
 
     def get_server_time(self) -> float | None:
+        """get_server_time method"""
         return None
 
     def get_bid_price_list(self) -> list[float] | None:
+        """get_bid_price_list method"""
         return [1.0]
 
     def get_ask_price_list(self) -> list[float] | None:
+        """get_ask_price_list method"""
         return [1.1]
 
     def get_bid_volume_list(self) -> list[float] | None:
+        """get_bid_volume_list method"""
         return [2.0]
 
     def get_ask_volume_list(self) -> list[float] | None:
+        """get_ask_volume_list method"""
         return [3.0]
 
     def get_bid_trade_nums(self) -> list[int] | None:
+        """get_bid_trade_nums method"""
         return None
 
     def get_ask_trade_nums(self) -> list[int] | None:
+        """get_ask_trade_nums method"""
         return None
 
     def __str__(self) -> str:
@@ -149,23 +184,29 @@ class _SampleOrderBook(OrderBookData):
 
 class _SampleLiquidation(LiquidationData):
     def init_data(self) -> _SampleLiquidation:
+        """init_data method"""
         self.exchange_name = "OKX"
         self.symbol_name = "BTC-USDT-SWAP"
         return self
 
     def get_exchange_name(self) -> str:
+        """get_exchange_name method"""
         return "OKX"
 
     def get_asset_type(self) -> str | None:
+        """get_asset_type method"""
         return "SWAP"
 
     def get_symbol_name(self) -> str | None:
+        """get_symbol_name method"""
         return "BTC-USDT-SWAP"
 
     def get_server_time(self) -> float | None:
+        """get_server_time method"""
         return None
 
     def get_local_update_time(self) -> float | None:
+        """get_local_update_time method"""
         return None
 
     def __str__(self) -> str:
@@ -174,30 +215,38 @@ class _SampleLiquidation(LiquidationData):
 
 class _SampleIncome(IncomeData):
     def init_data(self) -> _SampleIncome:
+        """init_data method"""
         self.exchange_name = "BINANCE"
         self.symbol_name = "BTCUSDT"
         self.income_value = 1.0
         return self
 
     def get_exchange_name(self) -> str:
+        """get_exchange_name method"""
         return "BINANCE"
 
     def get_server_time(self) -> float | None:
+        """get_server_time method"""
         return None
 
     def get_local_update_time(self) -> float | None:
+        """get_local_update_time method"""
         return None
 
     def get_symbol_name(self) -> str | None:
+        """get_symbol_name method"""
         return "BTCUSDT"
 
     def get_income_type(self) -> str | None:
+        """get_income_type method"""
         return "FUNDING_FEE"
 
     def get_income_value(self) -> float | None:
+        """get_income_value method"""
         return 1.0
 
     def get_income_asset(self) -> str | None:
+        """get_income_asset method"""
         return "USDT"
 
     def __str__(self) -> str:
@@ -208,6 +257,7 @@ class _SampleIncome(IncomeData):
 
 
 def test_funding_rate_data_base_event_and_payload() -> None:
+    """test_funding_rate_data_base_event_and_payload function"""
     funding_rate = _SampleFundingRate({"symbol": "BTCUSDT"}, True)
     funding_rate.init_data()
     assert funding_rate.get_event() == "FundingEvent"
@@ -216,6 +266,7 @@ def test_funding_rate_data_base_event_and_payload() -> None:
 
 
 def test_mark_price_data_base_event_and_payload() -> None:
+    """test_mark_price_data_base_event_and_payload function"""
     mark_price = _SampleMarkPrice({"symbol": "BTCUSDT"}, True)
     mark_price.init_data()
     assert mark_price.get_event() == "MarkPriceEvent"
@@ -223,6 +274,7 @@ def test_mark_price_data_base_event_and_payload() -> None:
 
 
 def test_orderbook_data_base_event_and_payload() -> None:
+    """test_orderbook_data_base_event_and_payload function"""
     orderbook = _SampleOrderBook({"symbol": "BTCUSDT"}, True)
     orderbook.init_data()
     assert orderbook.get_event() == "OrderBookEvent"
@@ -230,6 +282,7 @@ def test_orderbook_data_base_event_and_payload() -> None:
 
 
 def test_liquidation_data_base_event_and_payload() -> None:
+    """test_liquidation_data_base_event_and_payload function"""
     liquidation = _SampleLiquidation({"instId": "BTC-USDT-SWAP"}, True)
     liquidation.init_data()
     assert liquidation.get_event() == "LiquidationWarningEvent"
@@ -237,6 +290,7 @@ def test_liquidation_data_base_event_and_payload() -> None:
 
 
 def test_income_data_base_event_and_payload() -> None:
+    """test_income_data_base_event_and_payload function"""
     income = _SampleIncome({"symbol": "BTCUSDT"}, True)
     income.init_data()
     assert income.get_event() == "IncomeEvent"

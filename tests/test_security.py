@@ -1,3 +1,4 @@
+"""Module-level docstring."""
 from __future__ import annotations
 
 import sys
@@ -15,14 +16,17 @@ from bt_api_base.security import (
 
 class _FakeCipher:
     def encrypt(self, data: bytes) -> bytes:
+        """encrypt method"""
         return b"enc:" + data
 
     def decrypt(self, data: bytes) -> bytes:
+        """decrypt method"""
         assert data.startswith(b"enc:")
         return data[4:]
 
 
 def test_encrypt_and_decrypt_passthrough_without_cipher() -> None:
+    """test_encrypt_and_decrypt_passthrough_without_cipher function"""
     manager = SecureCredentialManager()
 
     encrypted = manager.encrypt_credential("secret-value")
@@ -33,6 +37,7 @@ def test_encrypt_and_decrypt_passthrough_without_cipher() -> None:
 
 
 def test_encrypt_and_decrypt_with_cipher() -> None:
+    """test_encrypt_and_decrypt_with_cipher function"""
     manager = SecureCredentialManager()
     manager._cipher = _FakeCipher()
 
@@ -44,6 +49,7 @@ def test_encrypt_and_decrypt_with_cipher() -> None:
 
 
 def test_init_with_encryption_key_creates_real_cipher_and_roundtrip() -> None:
+    """test_init_with_encryption_key_creates_real_cipher_and_roundtrip function"""
     if not security_module.CRYPTO_AVAILABLE:
         pytest.skip("cryptography unavailable")
 
@@ -59,6 +65,7 @@ def test_init_with_encryption_key_creates_real_cipher_and_roundtrip() -> None:
 
 
 def test_init_with_encryption_key_without_crypto_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    """test_init_with_encryption_key_without_crypto_raises function"""
     monkeypatch.setattr(security_module, "CRYPTO_AVAILABLE", False)
 
     with pytest.raises(ImportError, match="cryptography package required"):
@@ -66,6 +73,7 @@ def test_init_with_encryption_key_without_crypto_raises(monkeypatch: pytest.Monk
 
 
 def test_load_from_env_returns_value_and_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """test_load_from_env_returns_value_and_default function"""
     monkeypatch.setenv("BT_API_PY_TEST_KEY", "configured")
 
     assert SecureCredentialManager.load_from_env("BT_API_PY_TEST_KEY") == "configured"
@@ -84,10 +92,12 @@ def test_load_from_env_returns_value_and_default(monkeypatch: pytest.MonkeyPatch
     ],
 )
 def test_validate_api_key_cases(api_key: str | None, min_length: int, expected: bool) -> None:
+    """test_validate_api_key_cases function"""
     assert SecureCredentialManager.validate_api_key(api_key, min_length=min_length) is expected
 
 
 def test_mask_credential_formats_visible_segments() -> None:
+    """test_mask_credential_formats_visible_segments function"""
     assert (
         SecureCredentialManager.mask_credential("abcd1234wxyz", visible_chars=4) == "abcd****wxyz"
     )
@@ -156,6 +166,7 @@ def test_get_exchange_credentials_plaintext_branches(
     expected: dict[str, object],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """test_get_exchange_credentials_plaintext_branches function"""
     manager = SecureCredentialManager()
     monkeypatch.setattr(
         manager, "load_from_env", lambda key, default=None: env_values.get(key, default)
@@ -167,6 +178,7 @@ def test_get_exchange_credentials_plaintext_branches(
 def test_get_exchange_credentials_decrypts_string_fields_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """test_get_exchange_credentials_decrypts_string_fields_only function"""
     manager = SecureCredentialManager()
     manager._cipher = object()
     env_values = {
@@ -192,22 +204,26 @@ def test_get_exchange_credentials_decrypts_string_fields_only(
 
 
 def test_load_credentials_from_env_file_missing_file_returns_empty(tmp_path) -> None:
+    """test_load_credentials_from_env_file_missing_file_returns_empty function"""
     missing_file = tmp_path / "missing.env"
 
     assert load_credentials_from_env_file(missing_file) == {}
 
 
 def test_load_credentials_from_env_file_manual_parse(tmp_path) -> None:
+    """test_load_credentials_from_env_file_manual_parse function"""
     env_file = tmp_path / ".env"
     env_file.write_text('FOO=bar\nQUOTED=" spaced value "\n#IGNORED=1\n', encoding="utf-8")
 
-    with patch.dict(sys.modules, {"dotenv": None}):
+    with patch.dict(sys.modules, {"dotenv":
+        None}):
         credentials = load_credentials_from_env_file(env_file)
 
     assert credentials == {"FOO": "bar", "QUOTED": " spaced value "}
 
 
 def test_create_env_template_writes_expected_content(tmp_path) -> None:
+    """test_create_env_template_writes_expected_content function"""
     env_template = tmp_path / ".env.example"
 
     create_env_template(env_template)

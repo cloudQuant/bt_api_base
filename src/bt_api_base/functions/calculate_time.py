@@ -1,3 +1,4 @@
+"""Module-level docstring."""
 from __future__ import annotations
 
 from datetime import datetime, tzinfo
@@ -10,8 +11,7 @@ from bt_api_base._compat import UTC
 def get_utc_time() -> str:
     """Get current UTC time in ISO format.
 
-    Returns:
-        Current UTC time string in format "YYYY-MM-DDTHH:MM:SS.ffffffZ".
+    Returns: Current UTC time string in format "YYYY-MM-DDTHH:MM:SS.ffffffZ".
     """
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
@@ -21,12 +21,10 @@ def convert_utc_local_datetime(
 ) -> datetime:
     """Convert UTC datetime to local datetime in given timezone.
 
-    Args:
-        datetime_utc: A datetime object in UTC.
+    Args: datetime_utc: A datetime object in UTC.
         timezone: A pytz timezone object. Defaults to 'Asia/Shanghai'.
 
-    Returns:
-        A datetime object in the local timezone.
+    Returns: A datetime object in the local timezone.
     """
     dtime_local = datetime_utc.astimezone(timezone)
     return dtime_local
@@ -37,12 +35,10 @@ def get_string_tz_time(
 ) -> str:
     """Generate string timezone datetime in particular timezone.
 
-    Args:
-        tz: Timezone in pytz.common_timezones.
+    Args: tz: Timezone in pytz.common_timezones.
         string_format: String format for output.
 
-    Returns:
-        Formatted timestamp string.
+    Returns: Formatted timestamp string.
     """
     tz_obj = pytz.timezone(tz)
     now = datetime.now(tz_obj).strftime(string_format)
@@ -52,12 +48,10 @@ def get_string_tz_time(
 def timestamp2datetime(timestamp: float, string_format: str = "%Y-%m-%d %H:%M:%S.%f") -> str:
     """Convert timestamp to formatted datetime string.
 
-    Args:
-        timestamp: Datetime timestamp.
+    Args: timestamp: Datetime timestamp.
         string_format: String format for output.
 
-    Returns:
-        Formatted datetime string.
+    Returns: Formatted datetime string.
     """
     dt_object = datetime.fromtimestamp(timestamp)
     formatted_time = dt_object.strftime(string_format)
@@ -70,12 +64,10 @@ def datetime2timestamp(
 ) -> float:
     """Convert string format datetime to timestamp.
 
-    Args:
-        datetime_string: The string format of datetime.
+    Args: datetime_string: The string format of datetime.
         string_format: String format of input.
 
-    Returns:
-        Timestamp as float.
+    Returns: Timestamp as float.
     """
     time_date = datetime.strptime(datetime_string, string_format)
     timestamp = time_date.timestamp()
@@ -88,12 +80,10 @@ def str2datetime(
 ) -> datetime:
     """Convert datetime string to datetime object.
 
-    Args:
-        datetime_string: The string format of datetime.
+    Args: datetime_string: The string format of datetime.
         string_format: String format of input.
 
-    Returns:
-        Datetime object.
+    Returns: Datetime object.
     """
     return datetime.strptime(datetime_string, string_format)
 
@@ -101,25 +91,23 @@ def str2datetime(
 def datetime2str(datetime_obj: datetime, string_format: str = "%Y-%m-%d %H:%M:%S.%f") -> str:
     """Convert datetime to string format.
 
-    Args:
-        datetime_obj: Datetime object to convert.
+    Args: datetime_obj: Datetime object to convert.
         string_format: String format for output.
 
-    Returns:
-        Formatted datetime string.
+    Returns: Formatted datetime string.
     """
     return datetime_obj.strftime(string_format)
 
 
 def _main() -> None:
-    print("获取当前的UTC时间:", get_utc_time())
+    print("UTC:", get_utc_time())
     _timestamp = 1692611135.737
     print(timestamp2datetime(_timestamp))
     print("--------------------------------")
-    print("考虑时区的时间", get_string_tz_time())
+    print("", get_string_tz_time())
     print("--------------------------------")
     begin_time = "2023-06-01 10:00:00.2"
-    print(f"时间戳 = {datetime2timestamp(begin_time)}")
+    print(f" = {datetime2timestamp(begin_time)}")
     print("--------------------------------")
     datetime_obj_ = str2datetime(begin_time)
     print(datetime_obj_)

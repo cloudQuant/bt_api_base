@@ -1,6 +1,6 @@
-"""认证配置 — 统一管理不同交易所的认证方式。
+""" — 。
 
-加密货币交易所使用 API Key，CTP 使用 Broker/User/Password，IB 使用 TWS 连接参数.
+ API Key，CTP  Broker/User/Password，IB  TWS .
 """
 
 from __future__ import annotations
@@ -44,21 +44,24 @@ def _validate_tcp_front(value: str, field_name: str) -> str:
 
 
 class AuthConfig:
-    """认证配置基类."""
+    """."""
 
     def __init__(self, exchange: str, asset_type: str = "SWAP", **kwargs: Any) -> None:
+        """__init__ method"""
         self.exchange = _require_non_empty_str(exchange, "exchange")
         self.asset_type = _require_non_empty_str(asset_type, "asset_type")
 
     def get_exchange_name(self) -> str:
+        """get_exchange_name method"""
         return f"{self.exchange}___{self.asset_type}"
 
     def to_dict(self) -> dict[str, Any]:
+        """to_dict method"""
         return {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
 
 
 class CryptoAuthConfig(AuthConfig):
-    """加密货币交易所认证配置（Binance, OKX 等）."""
+    """（Binance, OKX ）."""
 
     def __init__(
         self,
@@ -69,6 +72,7 @@ class CryptoAuthConfig(AuthConfig):
         passphrase: str | None = None,
         **kwargs: Any,
     ) -> None:
+        """__init__ method"""
         super().__init__(exchange, asset_type, **kwargs)
         if public_key is not None:
             public_key = _require_non_empty_str(public_key, "public_key")
@@ -86,7 +90,7 @@ class CryptoAuthConfig(AuthConfig):
 
 
 class CtpAuthConfig(AuthConfig):
-    """CTP 认证配置."""
+    """CTP ."""
 
     def __init__(
         self,
@@ -102,6 +106,7 @@ class CtpAuthConfig(AuthConfig):
         product_info: str = "",
         **kwargs: Any,
     ) -> None:
+        """__init__ method"""
         super().__init__(exchange, asset_type, **kwargs)
         self.broker_id = _require_non_empty_str(broker_id, "broker_id")
         self.user_id = _require_non_empty_str(user_id, "user_id")
@@ -114,7 +119,7 @@ class CtpAuthConfig(AuthConfig):
 
 
 class IbAuthConfig(AuthConfig):
-    """Interactive Brokers 认证配置."""
+    """Interactive Brokers ."""
 
     def __init__(
         self,
@@ -125,6 +130,7 @@ class IbAuthConfig(AuthConfig):
         client_id: int = 1,
         **kwargs: Any,
     ) -> None:
+        """__init__ method"""
         super().__init__(exchange, asset_type, **kwargs)
         self.host = _require_non_empty_str(host, "host")
         self.port = _validate_port(port, "port")
@@ -134,7 +140,7 @@ class IbAuthConfig(AuthConfig):
 
 
 class IbWebAuthConfig(AuthConfig):
-    """Interactive Brokers Web API 认证配置."""
+    """Interactive Brokers Web API ."""
 
     def __init__(
         self,
@@ -154,6 +160,7 @@ class IbWebAuthConfig(AuthConfig):
         cookie_path: str = "/sso",
         **kwargs: Any,
     ) -> None:
+        """__init__ method"""
         super().__init__(exchange, asset_type, **kwargs)
         self.base_url = _validate_url(base_url, "base_url")
         self.account_id = account_id

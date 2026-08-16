@@ -1,7 +1,7 @@
 """
-统一 HTTP 客户端
-基于 httpx 实现同步/异步请求，替代各交易所重复的 requests 代码。
-支持连接池复用、统一错误处理、代理配置。
+ HTTP 
+ httpx /， requests 。
+、、。
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ logger = get_logger("http_client")
 
 
 class HttpClient:
-    """统一 HTTP 客户端"""
+    """ HTTP """
 
     def __init__(
         self,
@@ -38,6 +38,7 @@ class HttpClient:
         proxies: str | dict[str, str] | None = None,
         **kwargs: Any,
     ) -> None:
+        """__init__ method"""
         if httpx is None:
             raise ImportError(
                 "httpx is required for HttpClient. Install it with: pip install httpx"
@@ -66,7 +67,7 @@ class HttpClient:
         if proxy_url:
             transport_kwargs["proxy"] = proxy_url
 
-        # 同步客户端
+        # 
         self._sync_client = httpx.Client(
             timeout=timeout,
             limits=limits,
@@ -76,7 +77,7 @@ class HttpClient:
             **transport_kwargs,
         )
 
-        # 异步客户端（延迟初始化）
+        # （）
         self._async_client: httpx.AsyncClient | None = None
         self._async_kwargs: dict[str, Any] = {
             "timeout": timeout,
@@ -89,7 +90,7 @@ class HttpClient:
             self._async_kwargs["proxy"] = proxy_url
 
     def _get_async_client(self) -> httpx.AsyncClient:
-        """延迟初始化异步客户端"""
+        """"""
         if self._async_client is None or self._async_client.is_closed:
             self._async_client = httpx.AsyncClient(**self._async_kwargs)
         return self._async_client
@@ -106,7 +107,7 @@ class HttpClient:
         cookies: dict[str, str] | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """同步请求"""
+        """"""
         req_kwargs: dict[str, Any] = {}
         if headers:
             req_kwargs["headers"] = headers
@@ -119,7 +120,7 @@ class HttpClient:
         if timeout is not None:
             req_kwargs["timeout"] = timeout
 
-        # 将 cookies 添加到 Cookie header 以避免 httpx 警告
+        #  cookies  Cookie header  httpx 
         if cookies:
             cookie_header = "; ".join(f"{k}={v}" for k, v in cookies.items())
             if "headers" not in req_kwargs:
@@ -149,7 +150,7 @@ class HttpClient:
         cookies: dict[str, str] | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """异步请求"""
+        """"""
         client = self._get_async_client()
 
         req_kwargs: dict[str, Any] = {}
@@ -164,7 +165,7 @@ class HttpClient:
         if timeout is not None:
             req_kwargs["timeout"] = timeout
 
-        # 将 cookies 添加到 Cookie header 以避免 httpx 警告
+        #  cookies  Cookie header  httpx 
         if cookies:
             cookie_header = "; ".join(f"{k}={v}" for k, v in cookies.items())
             if "headers" not in req_kwargs:
@@ -189,13 +190,12 @@ class HttpClient:
         return self._process_response(response)
 
     def _process_response(self, response: httpx.Response) -> dict[str, Any]:
-        """处理响应，统一错误转换"""
+        """，"""
         status = response.status_code
 
         # 2xx success
         if response.is_success:
-            try:
-                return cast("dict[str, Any]", response.json())
+            try: return cast("dict[str, Any]", response.json())
             except (ValueError, UnicodeDecodeError):
                 return {"text": response.text, "status_code": status}
 
@@ -205,8 +205,7 @@ class HttpClient:
         # This matches the old requests-based behavior where only 404/410 raised.
         if 400 <= status < 500 and status not in (404, 410):
             logger.warning(f"HTTP {status} response from {response.url}: {response.text[:200]}")
-            try:
-                return cast("dict[str, Any]", response.json())
+            try: return cast("dict[str, Any]", response.json())
             except (ValueError, UnicodeDecodeError):
                 pass  # fall through to raise
 
@@ -214,7 +213,7 @@ class HttpClient:
         raise self._handle_error(response)
 
     def _handle_error(self, response: httpx.Response) -> Exception:
-        """统一错误处理"""
+        """"""
         status = response.status_code
         try:
             body = response.json()
@@ -231,15 +230,14 @@ class HttpClient:
             )
         elif status >= 500:
             return ServerError(venue=self._venue, status=status, response=body)
-        else:
-            return RequestFailedError(
+        else: return RequestFailedError(
                 venue=self._venue,
                 status_code=status,
                 message=f"HTTP {status}: {body.get('msg', body.get('message', 'Request failed'))}",
             )
 
     def close(self) -> None:
-        """关闭同步客户端"""
+        """"""
         if not self._sync_client.is_closed:
             self._sync_client.close()
         self._close_async_client()
@@ -275,13 +273,14 @@ class HttpClient:
             )
 
     async def aclose(self) -> None:
-        """异步关闭所有客户端"""
+        """"""
         if not self._sync_client.is_closed:
             self._sync_client.close()
         if self._async_client and not self._async_client.is_closed:
             await self._async_client.aclose()
 
     def __enter__(self) -> HttpClient:
+        """__enter__ method"""
         return self
 
     def __exit__(
@@ -290,6 +289,7 @@ class HttpClient:
         exc_val: BaseException | None,
         exc_tb: Any,
     ) -> None:
+        """__exit__ method"""
         self.close()
 
     async def __aenter__(self) -> HttpClient:

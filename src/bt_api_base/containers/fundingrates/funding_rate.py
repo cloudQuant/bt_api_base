@@ -1,4 +1,4 @@
-"""资金费率类，用于确定资金费率的属性和方法。"""
+"""，。"""
 
 from __future__ import annotations
 
@@ -9,9 +9,10 @@ from bt_api_base.containers.auto_init_mixin import AutoInitMixin
 
 
 class FundingRateData(AutoInitMixin):
-    """保存资金费率信息"""
+    """"""
 
     def __init__(self, funding_rate_info: Any, has_been_json_encoded: bool) -> None:
+        """__init__ method"""
         self.event = "FundingEvent"
         self.funding_rate_info = funding_rate_info
         self.has_been_json_encoded = has_been_json_encoded
@@ -36,15 +37,19 @@ class FundingRateData(AutoInitMixin):
         self.all_data: dict[str, Any] | None = None
 
     def get_event(self) -> str:
+        """get_event method"""
         return self.event
 
     def get_event_type(self) -> str:
+        """get_event_type method"""
         return self.get_event()
 
     def init_data(self) -> None | Self:
+        """init_data method"""
         raise NotImplementedError
 
     def get_all_data(self) -> dict[str, Any]:
+        """get_all_data method"""
         if self.all_data is None:
             self.all_data = {
                 "exchange_name": self.exchange_name,
@@ -68,51 +73,67 @@ class FundingRateData(AutoInitMixin):
         return self.all_data
 
     def get_exchange_name(self) -> str:
+        """get_exchange_name method"""
         raise NotImplementedError
 
     def get_server_time(self) -> float | None:
+        """get_server_time method"""
         raise NotImplementedError
 
     def get_local_update_time(self) -> float | None:
+        """get_local_update_time method"""
         raise NotImplementedError
 
     def get_asset_type(self) -> str | None:
+        """get_asset_type method"""
         raise NotImplementedError
 
     def get_symbol_name(self) -> str | None:
+        """get_symbol_name method"""
         raise NotImplementedError
 
     def get_pre_funding_rate(self) -> float | None:
+        """get_pre_funding_rate method"""
         raise NotImplementedError
 
     def get_pre_funding_time(self) -> float | None:
+        """get_pre_funding_time method"""
         raise NotImplementedError
 
     def get_next_funding_rate(self) -> float | None:
+        """get_next_funding_rate method"""
         raise NotImplementedError
 
     def get_next_funding_time(self) -> float | None:
+        """get_next_funding_time method"""
         raise NotImplementedError
 
     def get_max_funding_rate(self) -> float | None:
+        """get_max_funding_rate method"""
         raise NotImplementedError
 
     def get_min_funding_rate(self) -> float | None:
+        """get_min_funding_rate method"""
         raise NotImplementedError
 
     def get_current_funding_rate(self) -> float | None:
+        """get_current_funding_rate method"""
         raise NotImplementedError
 
     def get_current_funding_time(self) -> float | None:
+        """get_current_funding_time method"""
         raise NotImplementedError
 
     def get_settlement_funding_rate(self) -> float | None:
+        """get_settlement_funding_rate method"""
         raise NotImplementedError
 
     def get_settlement_status(self) -> str | None:
+        """get_settlement_status method"""
         raise NotImplementedError
 
     def get_method(self) -> str | None:
+        """get_method method"""
         raise NotImplementedError
 
     def __str__(self) -> str:

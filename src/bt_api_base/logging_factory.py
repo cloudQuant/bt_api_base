@@ -1,12 +1,12 @@
 """
-集中日志工厂 — 统一管理所有模块的 logger 创建
-替代各模块分散的 SpdLogManager(...).create_logger() 调用
+ —  logger 
+ SpdLogManager(...).create_logger() 
 
-用法:
+:
     from bt_api_base.logging_factory import get_logger
     logger = get_logger("feed")          # -> logs/feed.log
     logger = get_logger("event_bus")     # -> logs/event_bus.log
-    logger = get_logger("api", print_info=True)  # 同时输出到控制台
+    logger = get_logger("api", print_info=True)  # 
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from bt_api_base.functions.log_message import SpdLogManager
 
 __all__ = ["get_logger", "_LoggerProxy"]
 
-# 预定义的模块日志名称映射: module_key -> (file_name, logger_name)
+# : module_key -> (file_name, logger_name)
 _MODULE_LOG_MAP = {
     "api": ("bt_api.log", "api"),
     "registry": ("bt_api_registry.log", "registry"),
@@ -30,7 +30,7 @@ _MODULE_LOG_MAP = {
     "websocket": ("websocket.log", "websocket"),
 }
 
-# 缓存已创建的 logger，避免重复创建
+#  logger，
 _logger_cache: dict[tuple[str, bool], _LoggerProxy] = {}
 _logger_cache_lock = threading.Lock()
 
@@ -39,9 +39,11 @@ class _LoggerProxy:
     """Compatibility wrapper exposing both `warn` and `warning`."""
 
     def __init__(self, logger: object) -> None:
+        """__init__ method"""
         self._logger = logger
 
     def warning(self, *args: Any, **kwargs: Any) -> None:
+        """warning method"""
         warning_method = getattr(self._logger, "warning", None)
         if warning_method is not None:
             warning_method(*args, **kwargs)
@@ -51,6 +53,7 @@ class _LoggerProxy:
             warn_method(*args, **kwargs)
 
     def warn(self, *args: Any, **kwargs: Any) -> None:
+        """warn method"""
         warn_method = getattr(self._logger, "warn", None)
         if warn_method is not None:
             warn_method(*args, **kwargs)
@@ -80,12 +83,12 @@ def _build_custom_log_file_name(module: str) -> str:
 
 
 def get_logger(module: str, print_info: bool = False) -> _LoggerProxy:
-    """获取指定模块的 logger
+    """ logger
 
-    :param module: 模块标识，如 "api", "feed", "event_bus"，
-                   或任意自定义名称（会自动创建 {module}.log）
-    :param print_info: 是否同时输出到控制台
-    :return: spdlog logger 实例（通过 _LoggerProxy 包装）
+    :param module: ， "api", "feed", "event_bus"，
+                   （ {module}.log）
+    :param print_info: 
+    :return: spdlog logger （ _LoggerProxy ）
     """
     cache_key = (module, print_info)
     with _logger_cache_lock:

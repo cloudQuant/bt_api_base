@@ -1,3 +1,4 @@
+"""Module documentation"""
 from __future__ import annotations
 
 import asyncio
@@ -18,7 +19,9 @@ __all__ = ["AsyncBase"]
 
 
 class AsyncBase:
+    """Class AsyncBase"""
     def __init__(self, **kwargs: Any) -> None:
+        """__init__ method"""
         self.loop: asyncio.AbstractEventLoop | None = None
         self.keepalive_timeout = 30
         self.client_timeout = 5
@@ -34,6 +37,7 @@ class AsyncBase:
         self.start_loop()
 
     def start_loop(self) -> tuple[asyncio.AbstractEventLoop, Thread]:
+        """start_loop method"""
         if self.loop is None:
             self.loop = asyncio.new_event_loop()
         loop_thread = Thread(target=self._start_thread_loop, daemon=True)
@@ -58,6 +62,7 @@ class AsyncBase:
                     loop.close()
 
     def release(self) -> None:
+        """release method"""
         if self.loop is not None:
             self.loop.stop()
 
@@ -66,6 +71,7 @@ class AsyncBase:
         func: Coroutine[Any, Any, Any],
         callback: Callable[[Any], Any] | None = None,
     ) -> None:
+        """submit method"""
         loop = self.loop
         if loop is None:
             return
@@ -74,11 +80,13 @@ class AsyncBase:
             future.add_done_callback(callback)
 
     def get_session(self) -> ClientSession:
+        """get_session method"""
         conn = TCPConnector(ssl=False, keepalive_timeout=self.keepalive_timeout, limit=100)
         session = ClientSession(connector=conn)
         return session
 
     def close(self) -> None:
+        """close method"""
         if self.loop is not None and self.session is not None:
             self.submit(self.session.close())
             self.release()
@@ -91,6 +99,7 @@ class AsyncBase:
         body: dict[str, Any] | str | None = None,
         timeout: float | None = None,
     ) -> dict[Any, Any]:
+        """async_http_request method"""
         try:
             session = self.session
             if session is None or session.closed:
@@ -113,7 +122,7 @@ class AsyncBase:
             return cast("dict[Any, Any]", ret)
         except Exception:
             self.async_base_logger.info(
-                f"""rest_async错误:{get_string_tz_time()} {traceback.format_exc()}"""
+                f"""rest_async:{get_string_tz_time()} {traceback.format_exc()}"""
             )
             raise
 

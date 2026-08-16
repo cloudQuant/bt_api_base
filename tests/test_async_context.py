@@ -18,6 +18,7 @@ from bt_api_base.core.async_context import (
 
 @pytest.mark.asyncio
 async def test_async_semaphore_timeout_raises_timeout_error() -> None:
+    """test_async_semaphore_timeout_raises_timeout_error function"""
     semaphore = AsyncSemaphore(max_concurrent=1)
     await semaphore.acquire()
 
@@ -29,6 +30,7 @@ async def test_async_semaphore_timeout_raises_timeout_error() -> None:
 
 @pytest.mark.asyncio
 async def test_async_queue_timeout_on_get() -> None:
+    """test_async_queue_timeout_on_get function"""
     queue = AsyncQueue()
 
     with pytest.raises(TimeoutError, match="Failed to get item"):
@@ -37,6 +39,7 @@ async def test_async_queue_timeout_on_get() -> None:
 
 @pytest.mark.asyncio
 async def test_async_retry_retries_until_success() -> None:
+    """test_async_retry_retries_until_success function"""
     attempts = 0
 
     @async_retry(max_attempts=3, delay=0.0)
@@ -53,16 +56,18 @@ async def test_async_retry_retries_until_success() -> None:
 
 @pytest.mark.asyncio
 async def test_async_timeout_raises_timeout_error() -> None:
+    """test_async_timeout_raises_timeout_error function"""
     @async_timeout(0.01)
     async def slow() -> None:
+        """test_async_timeout_raises_timeout_error function"""
         await asyncio.sleep(0.1)
-
     with pytest.raises(TimeoutError):
         await slow()
 
 
 @pytest.mark.asyncio
 async def test_async_circuit_breaker_opens_after_failures() -> None:
+    """test_async_circuit_breaker_opens_after_failures function"""
     attempts = 0
 
     @async_circuit_breaker(failure_threshold=2, recovery_timeout=60.0)
@@ -83,6 +88,7 @@ async def test_async_circuit_breaker_opens_after_failures() -> None:
 
 @pytest.mark.asyncio
 async def test_async_task_group_wait_all_clears_done_tasks() -> None:
+    """test_async_task_group_wait_all_clears_done_tasks function"""
     group = AsyncTaskGroup()
 
     async def quick(value: int) -> int:

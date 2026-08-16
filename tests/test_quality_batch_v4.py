@@ -119,6 +119,7 @@ class TestInstrumentManagerRegisterMany:
     """Verify register_many behaves identically after the _register_unlocked refactor."""
 
     def test_register_many_basic(self):
+        """test_register_many_basic method"""
         mgr = InstrumentManager()
         instruments = [_make_instrument(f"INST_{i}") for i in range(5)]
         mgr.register_many(instruments)
@@ -127,6 +128,7 @@ class TestInstrumentManagerRegisterMany:
             assert mgr.get(inst.internal) is inst
 
     def test_register_many_updates_existing(self):
+        """test_register_many_updates_existing method"""
         mgr = InstrumentManager()
         inst_v1 = _make_instrument("BTC_USDT", venue_symbol="BTCUSDT")
         mgr.register(inst_v1)
@@ -147,6 +149,7 @@ class TestInstrumentManagerRegisterMany:
             assert mgr.get_by_venue("BINANCE", inst.venue_symbol) is inst
 
     def test_single_register_still_works(self):
+        """test_single_register_still_works method"""
         mgr = InstrumentManager()
         inst = _make_instrument("SOLO")
         mgr.register(inst)
@@ -161,16 +164,19 @@ class TestEventBusOnValidation:
     """Verify that on() still rejects falsy event_type values correctly."""
 
     def test_none_event_type_raises(self):
+        """test_none_event_type_raises method"""
         bus = EventBus()
         with pytest.raises(ValueError, match="non-empty"):
             bus.on(None, lambda d: d)
 
     def test_empty_string_event_type_raises(self):
+        """test_empty_string_event_type_raises method"""
         bus = EventBus()
         with pytest.raises(ValueError, match="non-empty"):
             bus.on("", lambda d: d)
 
     def test_valid_event_type_works(self):
+        """test_valid_event_type_works method"""
         bus = EventBus()
         called = []
         bus.on("test", called.append)
@@ -185,6 +191,7 @@ class TestMaskCredentialNegativeGuard:
     """Verify mask_credential handles negative visible_chars gracefully."""
 
     def test_negative_visible_chars_returns_masked(self):
+        """test_negative_visible_chars_returns_masked method"""
         result = SecureCredentialManager.mask_credential("abcdefghijkl", visible_chars=-5)
         # After clamping to 0, visible_chars*2=0, len("abcdefghijkl")=12 > 0
         # So it masks the entire string with stars
@@ -194,23 +201,27 @@ class TestMaskCredentialNegativeGuard:
         assert not result.endswith("l")
 
     def test_zero_visible_chars(self):
+        """test_zero_visible_chars method"""
         result = SecureCredentialManager.mask_credential("abcdefghijkl", visible_chars=0)
         # All characters masked
         assert result == "*" * 12
 
     def test_positive_visible_chars_normal(self):
+        """test_positive_visible_chars_normal method"""
         result = SecureCredentialManager.mask_credential("abcdefghijklmnop", visible_chars=4)
         assert result.startswith("abcd")
         assert result.endswith("mnop")
         assert "****" in result
 
     def test_empty_credential(self):
+        """test_empty_credential method"""
         result = SecureCredentialManager.mask_credential("", visible_chars=-1)
         assert result == "****"
 
     def test_short_credential_with_negative(self):
         # After clamping to 0, visible_chars*2=0, len("ab")=2 > 0
         # So it masks with stars
+        """test_short_credential_with_negative method"""
         result = SecureCredentialManager.mask_credential("ab", visible_chars=-3)
         assert result == "**"
 
@@ -225,6 +236,7 @@ class TestAsyncPooledConnection:
         return asyncio.get_event_loop_policy().new_event_loop().run_until_complete(coro)
 
     def test_basic_usage(self):
+        """test_basic_usage method"""
         async def _test():
             pool = AsyncConnectionPool(factory=lambda: "conn", max_size=2)
             async with AsyncPooledConnection(pool) as conn:
@@ -236,6 +248,7 @@ class TestAsyncPooledConnection:
         self._run(_test())
 
     def test_exception_releases_connection(self):
+        """test_exception_releases_connection method"""
         async def _test():
             pool = AsyncConnectionPool(factory=lambda: "conn", max_size=1)
             with pytest.raises(ValueError):
@@ -249,6 +262,7 @@ class TestAsyncPooledConnection:
         self._run(_test())
 
     def test_multiple_sequential_uses(self):
+        """test_multiple_sequential_uses method"""
         async def _test():
             counter = 0
 
@@ -275,6 +289,7 @@ class TestPooledConnectionSync:
     """Sanity check that existing PooledConnection still works after edits."""
 
     def test_sync_pooled_connection(self):
+        """test_sync_pooled_connection method"""
         pool = ConnectionPool(factory=lambda: "sync_conn", max_size=2)
         pool.start()
         try:
@@ -283,5 +298,4 @@ class TestPooledConnectionSync:
             avail, in_use = pool.size()
             assert in_use == 0
             assert avail >= 1
-        finally:
-            pool.stop()
+        finally: pool.stop()

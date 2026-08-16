@@ -39,6 +39,7 @@ class ConnectionPool(Generic[T]):
         max_idle_time: float = 300.0,
         health_check: Callable[[T], bool] | None = None,
     ) -> None:
+        """__init__ method"""
         self._factory = factory
         self._max_size = max_size
         self._min_size = min_size
@@ -53,6 +54,7 @@ class ConnectionPool(Generic[T]):
         self._running = False
 
     def start(self) -> None:
+        """start method"""
         if self._running:
             return
 
@@ -67,6 +69,7 @@ class ConnectionPool(Generic[T]):
         self._cleanup_thread.start()
 
     def stop(self) -> None:
+        """stop method"""
         self._running = False
 
         if self._cleanup_thread:
@@ -82,6 +85,7 @@ class ConnectionPool(Generic[T]):
             self._in_use.clear()
 
     def acquire(self, timeout: float | None = None) -> T:
+        """acquire method"""
         deadline = None if timeout is None else time.monotonic() + timeout
         with self._condition:
             while True:
@@ -109,6 +113,7 @@ class ConnectionPool(Generic[T]):
                 self._condition.wait(timeout=remaining)
 
     def release(self, conn: T) -> None:
+        """release method"""
         with self._condition:
             if conn not in self._in_use:
                 return
@@ -153,6 +158,7 @@ class ConnectionPool(Generic[T]):
                 _logger.debug(f"Error closing connection: {e}")
 
     def size(self) -> tuple[int, int]:
+        """size method"""
         with self._lock:
             return len(self._pool), len(self._in_use)
 
@@ -167,6 +173,7 @@ class AsyncConnectionPool(Generic[T]):
         min_size: int = 2,
         max_idle_time: float = 300.0,
     ) -> None:
+        """__init__ method"""
         self._factory = factory
         self._max_size = max_size
         self._min_size = min_size
@@ -178,6 +185,7 @@ class AsyncConnectionPool(Generic[T]):
         self._semaphore = asyncio.Semaphore(max_size)
 
     async def acquire(self) -> T:
+        """acquire method"""
         await self._semaphore.acquire()
         async with self._lock:
             while self._pool:
@@ -194,6 +202,7 @@ class AsyncConnectionPool(Generic[T]):
             return conn
 
     async def release(self, conn: T) -> None:
+        """release method"""
         async with self._lock:
             if conn not in self._in_use:
                 _logger.warning("AsyncConnectionPool.release called with unknown connection")
@@ -207,10 +216,12 @@ class PooledConnection(Generic[T]):
     """Context manager for pooled connections."""
 
     def __init__(self, pool: ConnectionPool[T]) -> None:
+        """__init__ method"""
         self._pool = pool
         self._conn: T | None = None
 
     def __enter__(self) -> T:
+        """__enter__ method"""
         conn = self._pool.acquire()
         self._conn = conn
         return conn
@@ -221,6 +232,7 @@ class PooledConnection(Generic[T]):
         exc_val: BaseException | None,
         exc_tb: Any,
     ) -> None:
+        """__exit__ method"""
         if self._conn:
             self._pool.release(self._conn)
 
@@ -229,6 +241,7 @@ class AsyncPooledConnection(Generic[T]):
     """Async context manager for pooled connections."""
 
     def __init__(self, pool: AsyncConnectionPool[T]) -> None:
+        """__init__ method"""
         self._pool = pool
         self._conn: T | None = None
 

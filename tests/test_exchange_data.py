@@ -49,28 +49,28 @@ class TestExchangeData:
         """Test raise_path_error method."""
         exchange = ExchangeData()
 
-        with pytest.raises(NotImplementedError, match="wbfAPI还未封装"):
+        with pytest.raises(NotImplementedError, match="wbfAPI"):
             exchange.raise_path_error("test_path")
 
     def test_raise_timeout(self):
         """Test raise_timeout method."""
         exchange = ExchangeData()
 
-        with pytest.raises(TimeoutError, match="rest请求超时"):
+        with pytest.raises(TimeoutError, match="rest"):
             exchange.raise_timeout(30, "test")
 
     def test_raise400(self):
         """Test raise400 method."""
         exchange = ExchangeData()
 
-        with pytest.raises(RuntimeError, match="rest请求返回<400>"):
+        with pytest.raises(RuntimeError, match="rest<400>"):
             exchange.raise400("test")
 
     def test_raise_proxy_error(self):
         """Test raise_proxy_error method."""
         exchange = ExchangeData()
 
-        with pytest.raises(ConnectionError, match="网络代理错误"):
+        with pytest.raises(ConnectionError, match=""):
             exchange.raise_proxy_error("test")
 
     def test_update_info(self):

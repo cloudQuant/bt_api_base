@@ -1,10 +1,10 @@
 """
-交易所注册表 — 使用 Registry Pattern 实现交易所的即插即用
-新交易所只需注册 feed_class / stream_classes / exchange_data_class，无需修改核心代码
+ —  Registry Pattern 
+ feed_class / stream_classes / exchange_data_class，
 
-支持两种使用方式:
-1. 全局单例（向后兼容）: ExchangeRegistry.register_feed(...)
-2. 独立实例（测试隔离）: registry = ExchangeRegistry(); registry.register_feed(...)
+:
+1. （）: ExchangeRegistry.register_feed(...)
+2. （）: registry = ExchangeRegistry(); registry.register_feed(...)
 """
 
 from __future__ import annotations
@@ -19,9 +19,10 @@ __all__ = ["ExchangeRegistry"]
 
 
 class _ClassMethodOrInstance:
-    """描述符：类调用时使用类方法，实例调用时使用实例方法"""
+    """：，"""
 
     def __init__(self, class_method_name: str, instance_method_name: str) -> None:
+        """__init__ method"""
         self.class_method_name = class_method_name
         self.instance_method_name = instance_method_name
 
@@ -32,13 +33,13 @@ class _ClassMethodOrInstance:
 
 
 class ExchangeRegistry:
-    """交易所注册表，管理 feed 类、流式数据类、交易所配置类的注册与创建
+    """， feed 、、
 
-    全局使用（向后兼容）:
+    （）:
         ExchangeRegistry.register_feed("BINANCE___SPOT", BinanceSpotFeed)
         feed = ExchangeRegistry.create_feed("BINANCE___SPOT", queue)
 
-    测试隔离:
+    :
         registry = ExchangeRegistry()
         registry.register_feed("TEST___SPOT", MockFeed)
     """
@@ -54,6 +55,7 @@ class ExchangeRegistry:
     _lock: threading.RLock
 
     def __new__(cls) -> ExchangeRegistry:
+        """__new__ method"""
         if cls._default is not None:
             return cls._default
         with cls._default_lock:
@@ -84,6 +86,7 @@ class ExchangeRegistry:
 
     @classmethod
     def create_isolated(cls) -> ExchangeRegistry:
+        """create_isolated method"""
         instance = object.__new__(cls)
         instance._feed_classes = {}
         instance._stream_classes = {}
@@ -92,7 +95,7 @@ class ExchangeRegistry:
         instance._lock = threading.RLock()
         return instance
 
-    # ── 内部实现方法 ────────────────────────────────────────────────────
+    # ──  ────────────────────────────────────────────────────
 
     def _register_feed(self, exchange_name: str, feed_class: type) -> None:
         with self._lock:
@@ -173,7 +176,7 @@ class ExchangeRegistry:
             self._exchange_data_classes.clear()
             self._balance_handlers.clear()
 
-    # ── 类级方法（委托到默认实例）─────────────────────────────────────────
+    # ── （）─────────────────────────────────────────
 
     @classmethod
     def _cls_register_feed(cls, exchange_name: str, feed_class: type) -> None:
@@ -243,7 +246,7 @@ class ExchangeRegistry:
     def _cls_clear(cls) -> None:
         cls._get_default()._clear()
 
-    # ── 公共 API（描述符实现类/实例双模式）──────────────────────────────
+    # ──  API（/）──────────────────────────────
 
     register_feed = _ClassMethodOrInstance("_cls_register_feed", "_register_feed")
     register_stream = _ClassMethodOrInstance("_cls_register_stream", "_register_stream")

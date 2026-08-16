@@ -76,6 +76,7 @@ class WebSocketConnection:
     """Managed WebSocket connection with auto-reconnect and backpressure."""
 
     def __init__(self, config: WebSocketConfig, connection_id: str):
+        """__init__ method"""
         self.config = config
         self.connection_id = connection_id
         self.logger = get_logger(f"ws_{config.exchange_name}_{connection_id}")
@@ -226,7 +227,7 @@ class WebSocketConnection:
                 "args": [{"channel": subscription.topic, "instId": subscription.symbol}],
             }
         else:
-            message = {
+                message = {
                 "action": "unsubscribe",
                 "topic": subscription.topic,
                 "symbol": subscription.symbol,
@@ -428,6 +429,7 @@ class WebSocketManager(IConnectionManager):
     """WebSocket connection manager with pooling and load balancing."""
 
     def __init__(self, event_bus: IEventBus = inject(cast("type[Any]", IEventBus))):
+        """__init__ method"""
         self.event_bus = event_bus
         self.logger = get_logger("websocket_manager")
 

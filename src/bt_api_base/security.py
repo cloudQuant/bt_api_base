@@ -38,6 +38,7 @@ class SecureCredentialManager:
     """
 
     def __init__(self, encryption_key: str | None = None):
+        """__init__ method"""
         self._encryption_key = encryption_key
         self._cipher = None
         self._salt = None
@@ -64,6 +65,7 @@ class SecureCredentialManager:
         return Fernet(key), salt
 
     def encrypt_credential(self, credential: str) -> str:
+        """encrypt_credential method"""
         if not self._cipher:
             return credential
 
@@ -71,6 +73,7 @@ class SecureCredentialManager:
         return base64.urlsafe_b64encode(encrypted).decode()
 
     def decrypt_credential(self, encrypted_credential: str) -> str:
+        """decrypt_credential method"""
         if not self._cipher:
             return encrypted_credential
 
@@ -80,10 +83,12 @@ class SecureCredentialManager:
 
     @staticmethod
     def load_from_env(key: str, default: str | None = None) -> str | None:
+        """load_from_env method"""
         return os.getenv(key, default)
 
     @staticmethod
     def mask_credential(credential: str, visible_chars: int = 4) -> str:
+        """mask_credential method"""
         visible_chars = max(0, visible_chars)
         if not credential or len(credential) <= visible_chars * 2:
             return "****"
@@ -94,6 +99,7 @@ class SecureCredentialManager:
 
     @staticmethod
     def validate_api_key(api_key: str, min_length: int = 16) -> bool:
+        """validate_api_key method"""
         if not api_key or not isinstance(api_key, str):
             return False
 
@@ -108,6 +114,7 @@ class SecureCredentialManager:
         return not (normalized_lower.startswith("your_") and normalized_lower.endswith("_here"))
 
     def get_exchange_credentials(self, exchange: str, encrypted: bool = False) -> dict[str, Any]:
+        """get_exchange_credentials method"""
         exchange = exchange.upper()
         credentials = {}
 
@@ -152,6 +159,7 @@ class SecureCredentialManager:
 
 
 def load_credentials_from_env_file(env_file: str | Path = ".env") -> dict[str, str | None]:
+    """load_credentials_from_env_file function"""
     try:
         from dotenv import dotenv_values
 
@@ -174,6 +182,7 @@ def load_credentials_from_env_file(env_file: str | Path = ".env") -> dict[str, s
 
 
 def create_env_template(output_file: str | Path = ".env.example") -> None:
+    """create_env_template function"""
     template = """# Binance API Credentials
 BINANCE_API_KEY=your_binance_api_key_here
 BINANCE_SECRET=your_binance_secret_here

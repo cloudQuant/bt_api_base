@@ -82,6 +82,7 @@ class ExchangeWebSocketAdapter(ABC):
     """Abstract base class for exchange-specific WebSocket adapters."""
 
     def __init__(self, exchange_name: str, credentials: ExchangeCredentials | None = None):
+        """__init__ method"""
         self.exchange_name = exchange_name
         self.credentials = credentials
         self.logger = get_logger(f"ws_adapter_{exchange_name}")
@@ -200,6 +201,7 @@ class OKXWebSocketAdapter(ExchangeWebSocketAdapter):
         exchange_type: ExchangeType = ExchangeType.SPOT,
         credentials: ExchangeCredentials | None = None,
     ):
+        """__init__ method"""
         super().__init__("OKX", credentials)
         self.exchange_type = exchange_type
 

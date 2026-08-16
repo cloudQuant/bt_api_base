@@ -1,4 +1,4 @@
-"""标记价格类，用于确定标记价格的属性和方法。"""
+"""，。"""
 
 from __future__ import annotations
 
@@ -9,9 +9,10 @@ from bt_api_base.containers.auto_init_mixin import AutoInitMixin
 
 
 class MarkPriceData(AutoInitMixin):
-    """保存标记价格信息."""
+    """."""
 
     def __init__(self, mark_price_info: Any, has_been_json_encoded: bool = False) -> None:
+        """__init__ method"""
         self.event = "MarkPriceEvent"
         self.mark_price_info = mark_price_info
         self.has_been_json_encoded = has_been_json_encoded
@@ -28,9 +29,11 @@ class MarkPriceData(AutoInitMixin):
         self.all_data: dict[str, Any] | None = None
 
     def init_data(self) -> None | Self:
+        """init_data method"""
         raise NotImplementedError
 
     def get_all_data(self) -> dict[str, Any]:
+        """get_all_data method"""
         if self.all_data is None:
             self.all_data = {
                 "exchange_name": self.exchange_name,
@@ -46,21 +49,27 @@ class MarkPriceData(AutoInitMixin):
         return self.all_data
 
     def get_event(self) -> str:
+        """get_event method"""
         return self.event
 
     def get_exchange_name(self) -> str:
+        """get_exchange_name method"""
         raise NotImplementedError
 
     def get_server_time(self) -> float | None:
+        """get_server_time method"""
         raise NotImplementedError
 
     def get_local_update_time(self) -> float | None:
+        """get_local_update_time method"""
         raise NotImplementedError
 
     def get_symbol_name(self) -> str | None:
+        """get_symbol_name method"""
         raise NotImplementedError
 
     def get_mark_price(self) -> float | None:
+        """get_mark_price method"""
         raise NotImplementedError
 
     def __str__(self) -> str:

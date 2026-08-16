@@ -1,4 +1,4 @@
-"""feed类, 用于处理数据、获取数据、向交易所传递数据"""
+"""feed, 、、"""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from bt_api_base.logging_factory import get_logger
 
 
 class Feed(AsyncBase, ConnectionMixin, CapabilityMixin):
+    """Class Feed"""
     def __init__(self, data_queue: Any = None, **kwargs: Any) -> None:
         """
         feed initial
@@ -212,8 +213,7 @@ class Feed(AsyncBase, ConnectionMixin, CapabilityMixin):
         if headers is None:
             headers = {}
         for attempt in range(max_retries):
-            try:
-                return self._http_client.request(
+            try: return self._http_client.request(
                     method=method,
                     url=url,
                     headers=headers,
@@ -249,6 +249,7 @@ class Feed(AsyncBase, ConnectionMixin, CapabilityMixin):
                 self.handle_request_exception(url, method, body, e)
 
     def disconnect(self) -> None:
+        """disconnect method"""
         self._http_client.close()
         ConnectionMixin.disconnect(self)
 

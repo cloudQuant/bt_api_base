@@ -1,3 +1,4 @@
+"""Module documentation"""
 from __future__ import annotations
 
 import logging
@@ -18,9 +19,11 @@ logger = logging.getLogger(__name__)
 
 class _IsolatedRuntimeRegistrar:
     def __init__(self) -> None:
+        """__init__ method"""
         self._adapters: dict[str, type[Any]] = {}
 
     def register_adapter(self, exchange_type: str, adapter_cls: type[Any]) -> None:
+        """register_adapter method"""
         normalized = str(exchange_type).strip().upper()
         existing = self._adapters.get(normalized)
         if existing is not None and existing is not adapter_cls:
@@ -30,18 +33,23 @@ class _IsolatedRuntimeRegistrar:
         self._adapters[normalized] = adapter_cls
 
     def get_adapter(self, exchange_type: str) -> type[Any] | None:
+        """get_adapter method"""
         normalized = str(exchange_type).strip().upper()
         return self._adapters.get(normalized)
 
     def list_adapters(self) -> list[str]:
+        """list_adapters method"""
         return list(self._adapters.keys())
 
     def items(self) -> list[tuple[str, type[Any]]]:
+        """items method"""
         return list(self._adapters.items())
 
 
 class PluginLoader:
+    """Class PluginLoader"""
     def __init__(self, registry: Any, runtime_registrar: Any) -> None:
+        """__init__ method"""
         self.registry = registry
         self.runtime_registrar = runtime_registrar
         self.loaded: dict[str, PluginInfo] = {}
@@ -54,6 +62,7 @@ class PluginLoader:
         return entry_name
 
     def load_all(self, group: str = "bt_api.plugins") -> None:
+        """load_all method"""
         entry_points = list(self._discover_entry_points(group))
         if not entry_points:
             logger.info("%s discovered 0 entry points in group '%s'", LOG_PREFIX, group)

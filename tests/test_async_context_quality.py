@@ -1,3 +1,4 @@
+"""Module-level docstring."""
 from __future__ import annotations
 
 import pytest
@@ -15,6 +16,7 @@ from bt_api_base.core.async_context import (
 
 
 def test_async_retry_rejects_invalid_configuration() -> None:
+    """test_async_retry_rejects_invalid_configuration function"""
     with pytest.raises(ValueError, match="max_attempts must be > 0"):
         async_retry(max_attempts=0)
 
@@ -32,11 +34,13 @@ def test_async_retry_rejects_invalid_configuration() -> None:
 
 
 def test_async_timeout_rejects_non_positive_timeout() -> None:
+    """test_async_timeout_rejects_non_positive_timeout function"""
     with pytest.raises(ValueError, match="timeout_seconds must be > 0"):
         async_timeout(0)
 
 
 def test_async_circuit_breaker_rejects_invalid_configuration() -> None:
+    """test_async_circuit_breaker_rejects_invalid_configuration function"""
     with pytest.raises(ValueError, match="failure_threshold must be > 0"):
         async_circuit_breaker(failure_threshold=0)
 
@@ -49,12 +53,14 @@ def test_async_circuit_breaker_rejects_invalid_configuration() -> None:
 
 @pytest.mark.asyncio
 async def test_async_context_manager_timeout_rejects_non_positive_timeout() -> None:
+    """test_async_context_manager_timeout_rejects_non_positive_timeout function"""
     with pytest.raises(ValueError, match="timeout_seconds must be > 0"):
         async with AsyncContextManager.timeout(0):
             pass
 
 
 def test_async_rate_limiter_rejects_invalid_configuration() -> None:
+    """test_async_rate_limiter_rejects_invalid_configuration function"""
     with pytest.raises(ValueError, match="max_requests must be > 0"):
         AsyncRateLimiter(max_requests=0, time_window=1)
 
@@ -63,12 +69,14 @@ def test_async_rate_limiter_rejects_invalid_configuration() -> None:
 
 
 def test_async_semaphore_rejects_invalid_configuration() -> None:
+    """test_async_semaphore_rejects_invalid_configuration function"""
     with pytest.raises(ValueError, match="max_concurrent must be > 0"):
         AsyncSemaphore(max_concurrent=0)
 
 
 @pytest.mark.asyncio
 async def test_async_semaphore_rejects_non_positive_timeout() -> None:
+    """test_async_semaphore_rejects_non_positive_timeout function"""
     semaphore = AsyncSemaphore(max_concurrent=1)
 
     with pytest.raises(ValueError, match="timeout must be > 0"):
@@ -76,12 +84,14 @@ async def test_async_semaphore_rejects_non_positive_timeout() -> None:
 
 
 def test_async_queue_rejects_invalid_maxsize() -> None:
+    """test_async_queue_rejects_invalid_maxsize function"""
     with pytest.raises(ValueError, match="maxsize must be >= 0"):
         AsyncQueue(maxsize=-1)
 
 
 @pytest.mark.asyncio
 async def test_async_queue_rejects_non_positive_timeout() -> None:
+    """test_async_queue_rejects_non_positive_timeout function"""
     queue = AsyncQueue()
 
     with pytest.raises(ValueError, match="timeout must be > 0"):
@@ -93,6 +103,7 @@ async def test_async_queue_rejects_non_positive_timeout() -> None:
 
 @pytest.mark.asyncio
 async def test_async_task_group_wait_all_rejects_non_positive_timeout() -> None:
+    """test_async_task_group_wait_all_rejects_non_positive_timeout function"""
     group = AsyncTaskGroup()
 
     with pytest.raises(ValueError, match="timeout must be > 0"):

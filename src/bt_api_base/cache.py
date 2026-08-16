@@ -38,6 +38,7 @@ class SimpleCache:
     """
 
     def __init__(self, default_ttl: float = 300.0, max_size: int | None = 10000) -> None:
+        """__init__ method"""
         self._cache: OrderedDict[str, tuple[Any, float]] = OrderedDict()
         self._default_ttl = default_ttl
         self._max_size = max_size
@@ -63,9 +64,11 @@ class SimpleCache:
             return value
 
     def get(self, key: str) -> Any | None:
+        """get method"""
         return self._get_or_default(key, None)
 
     def set(self, key: str, value: Any, ttl: float | None = None) -> None:
+        """set method"""
         if ttl is None:
             ttl = self._default_ttl
 
@@ -79,14 +82,17 @@ class SimpleCache:
                     self._cache.popitem(last=False)
 
     def delete(self, key: str) -> None:
+        """delete method"""
         with self._lock:
             self._cache.pop(key, None)
 
     def clear(self) -> None:
+        """clear method"""
         with self._lock:
             self._cache.clear()
 
     def cleanup(self) -> int:
+        """cleanup method"""
         with self._lock:
             now = time.time()
             active_cache: OrderedDict[str, tuple[Any, float]] = OrderedDict()
@@ -100,6 +106,7 @@ class SimpleCache:
             return removed
 
     def size(self) -> int:
+        """size method"""
         with self._lock:
             return len(self._cache)
 
@@ -107,10 +114,12 @@ class SimpleCache:
         return iter(self.keys())
 
     def keys(self) -> list[str]:
+        """keys method"""
         with self._lock:
             return list(self._cache.keys())
 
     def get_stats(self) -> dict[str, float]:
+        """get_stats method"""
         with self._lock:
             total = self._hits + self._misses
             hit_rate = self._hits / total if total else 0.0
@@ -126,21 +135,27 @@ class ExchangeInfoCache:
     """Specialized cache for exchange information."""
 
     def __init__(self, ttl: float = 3600.0) -> None:
+        """__init__ method"""
         self._cache = SimpleCache(default_ttl=ttl)
 
     def get_trading_pairs(self, exchange: str) -> list[str] | None:
+        """get_trading_pairs method"""
         return self._cache.get(f"{exchange}:trading_pairs")
 
     def set_trading_pairs(self, exchange: str, pairs: list[str]) -> None:
+        """set_trading_pairs method"""
         self._cache.set(f"{exchange}:trading_pairs", pairs)
 
     def get_exchange_info(self, exchange: str, symbol: str) -> dict[str, Any] | None:
+        """get_exchange_info method"""
         return self._cache.get(f"{exchange}:{symbol}:info")
 
     def set_exchange_info(self, exchange: str, symbol: str, info: dict[str, Any]) -> None:
+        """set_exchange_info method"""
         self._cache.set(f"{exchange}:{symbol}:info", info)
 
     def clear_exchange(self, exchange: str) -> None:
+        """clear_exchange method"""
         keys_to_delete = [key for key in self._cache if key.startswith(f"{exchange}:")]
         for key in keys_to_delete:
             self._cache.delete(key)
@@ -150,18 +165,23 @@ class MarketDataCache:
     """Cache for market data with shorter TTL."""
 
     def __init__(self, ttl: float = 5.0) -> None:
+        """__init__ method"""
         self._cache = SimpleCache(default_ttl=ttl)
 
     def get_ticker(self, exchange: str, symbol: str) -> Any | None:
+        """get_ticker method"""
         return self._cache.get(f"{exchange}:{symbol}:ticker")
 
     def set_ticker(self, exchange: str, symbol: str, ticker: Any) -> None:
+        """set_ticker method"""
         self._cache.set(f"{exchange}:{symbol}:ticker", ticker)
 
     def get_orderbook(self, exchange: str, symbol: str) -> Any | None:
+        """get_orderbook method"""
         return self._cache.get(f"{exchange}:{symbol}:orderbook")
 
     def set_orderbook(self, exchange: str, symbol: str, orderbook: Any) -> None:
+        """set_orderbook method"""
         self._cache.set(f"{exchange}:{symbol}:orderbook", orderbook)
 
 
@@ -205,8 +225,10 @@ _market_data_cache = MarketDataCache()
 
 
 def get_exchange_info_cache() -> ExchangeInfoCache:
+    """get_exchange_info_cache function"""
     return _exchange_info_cache
 
 
 def get_market_data_cache() -> MarketDataCache:
+    """get_market_data_cache function"""
     return _market_data_cache
