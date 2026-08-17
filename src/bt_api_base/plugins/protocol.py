@@ -13,6 +13,7 @@ class PluginInfo:
     supported_exchanges: tuple[str, ...]
     supported_asset_types: tuple[str, ...]
     plugin_module: str = ""
+    capabilities: frozenset[str] = frozenset()
 
 
 __all__ = ["PluginInfo"]
