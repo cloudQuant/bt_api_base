@@ -191,6 +191,17 @@ class Feed(AsyncBase, ConnectionMixin, CapabilityMixin):
         """
         raise RequestError(self.exchange_name, detail="proxy_error")
 
+    def _retry_backoff(self, attempt: int, exception: Exception) -> None:
+        """按 Retry-After（若异常携带）或指数退避等待。"""
+        retry_after = getattr(exception, "retry_after", None)
+        if retry_after is not None:
+            try:
+                _time.sleep(float(retry_after))
+                return
+            except (TypeError, ValueError):
+                pass
+        _time.sleep(min(0.5 * (2**attempt), 2.0))
+
     def http_request(
         self,
         method: str,
@@ -232,7 +243,7 @@ class Feed(AsyncBase, ConnectionMixin, CapabilityMixin):
                     self.logger.warning(
                         f"Retry {attempt + 1}/{max_retries} for {self._sanitize_url_for_log(url)}: {e}"
                     )
-                    _time.sleep(min(0.5 * (2**attempt), 2.0))
+                    self._retry_backoff(attempt, e)
                     continue
                 if "timeout" in msg.lower():
                     self.handle_timeout_exception(url, method, body, timeout, e)
@@ -244,7 +255,7 @@ class Feed(AsyncBase, ConnectionMixin, CapabilityMixin):
                         f"Retry {attempt + 1}/{max_retries} unexpected error for "
                         f"{self._sanitize_url_for_log(url)}: {e}"
                     )
-                    _time.sleep(min(0.5 * (2**attempt), 2.0))
+                    self._retry_backoff(attempt, e)
                     continue
                 self.handle_request_exception(url, method, body, e)
 

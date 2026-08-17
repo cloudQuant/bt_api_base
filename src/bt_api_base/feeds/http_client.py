@@ -221,7 +221,14 @@ class HttpClient:
             body = {"text": response.text}
 
         if status == 429:
-            return UnifiedRateLimitError(venue=self._venue, response=body)
+            err = UnifiedRateLimitError(venue=self._venue, response=body)
+            retry_after = response.headers.get("Retry-After")
+            if retry_after is not None:
+                try:
+                    err.retry_after = float(retry_after)
+                except (ValueError, TypeError):
+                    pass
+            return err
         elif status in (401, 403):
             return UnifiedAuthError(
                 venue=self._venue,
