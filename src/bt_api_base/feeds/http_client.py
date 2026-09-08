@@ -1,5 +1,5 @@
 """
- HTTP 
+ HTTP
  httpx /， requests 。
 、、。
 """
@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from typing import Any, cast
 
 try:
@@ -20,6 +21,11 @@ from bt_api_base.error import (
     UnifiedRateLimitError,
 )
 from bt_api_base.exceptions import RequestFailedError
+from bt_api_base.feeds.transport_safety import (
+    sanitize_text,
+    sanitize_url,
+    sensitive_mapping_values,
+)
 from bt_api_base.logging_factory import get_logger
 
 logger = get_logger("http_client")
@@ -67,12 +73,12 @@ class HttpClient:
         if proxy_url:
             transport_kwargs["proxy"] = proxy_url
 
-        # 
+        #
         self._sync_client = httpx.Client(
             timeout=timeout,
             limits=limits,
             verify=verify,
-            follow_redirects=True,
+            follow_redirects=False,
             trust_env=trust_env,
             **transport_kwargs,
         )
@@ -83,7 +89,7 @@ class HttpClient:
             "timeout": timeout,
             "limits": limits,
             "verify": verify,
-            "follow_redirects": True,
+            "follow_redirects": False,
             "trust_env": trust_env,
         }
         if proxy_url:
@@ -120,21 +126,34 @@ class HttpClient:
         if timeout is not None:
             req_kwargs["timeout"] = timeout
 
-        #  cookies  Cookie header  httpx 
+        #  cookies  Cookie header  httpx
         if cookies:
             cookie_header = "; ".join(f"{k}={v}" for k, v in cookies.items())
             if "headers" not in req_kwargs:
                 req_kwargs["headers"] = {}
             req_kwargs["headers"]["Cookie"] = cookie_header
 
+        failure: RequestFailedError | None = None
         try:
             response = self._sync_client.request(method, url, **req_kwargs)
         except httpx.TimeoutException as e:
-            raise RequestFailedError(venue=self._venue, message=f"Request timeout: {e}") from e
+            message = sanitize_text(str(e), sensitive_values=sensitive_mapping_values(headers))
+            failure = RequestFailedError(
+                venue=self._venue, message=f"Request timeout: {message}"
+            )
         except httpx.ConnectError as e:
-            raise RequestFailedError(venue=self._venue, message=f"Connection error: {e}") from e
+            message = sanitize_text(str(e), sensitive_values=sensitive_mapping_values(headers))
+            failure = RequestFailedError(
+                venue=self._venue, message=f"Connection error: {message}"
+            )
         except httpx.RequestError as e:
-            raise RequestFailedError(venue=self._venue, message=f"HTTP client error: {e}") from e
+            message = sanitize_text(str(e), sensitive_values=sensitive_mapping_values(headers))
+            failure = RequestFailedError(
+                venue=self._venue, message=f"HTTP client error: {message}"
+            )
+
+        if failure is not None:
+            raise failure
 
         return self._process_response(response)
 
@@ -165,27 +184,34 @@ class HttpClient:
         if timeout is not None:
             req_kwargs["timeout"] = timeout
 
-        #  cookies  Cookie header  httpx 
+        #  cookies  Cookie header  httpx
         if cookies:
             cookie_header = "; ".join(f"{k}={v}" for k, v in cookies.items())
             if "headers" not in req_kwargs:
                 req_kwargs["headers"] = {}
             req_kwargs["headers"]["Cookie"] = cookie_header
 
+        failure: RequestFailedError | None = None
         try:
             response = await client.request(method, url, **req_kwargs)
         except httpx.TimeoutException as e:
-            raise RequestFailedError(
-                venue=self._venue, message=f"Async request timeout: {e}"
-            ) from e
+            message = sanitize_text(str(e), sensitive_values=sensitive_mapping_values(headers))
+            failure = RequestFailedError(
+                venue=self._venue, message=f"Async request timeout: {message}"
+            )
         except httpx.ConnectError as e:
-            raise RequestFailedError(
-                venue=self._venue, message=f"Async connection error: {e}"
-            ) from e
+            message = sanitize_text(str(e), sensitive_values=sensitive_mapping_values(headers))
+            failure = RequestFailedError(
+                venue=self._venue, message=f"Async connection error: {message}"
+            )
         except httpx.RequestError as e:
-            raise RequestFailedError(
-                venue=self._venue, message=f"Async HTTP client error: {e}"
-            ) from e
+            message = sanitize_text(str(e), sensitive_values=sensitive_mapping_values(headers))
+            failure = RequestFailedError(
+                venue=self._venue, message=f"Async HTTP client error: {message}"
+            )
+
+        if failure is not None:
+            raise failure
 
         return self._process_response(response)
 
@@ -195,7 +221,8 @@ class HttpClient:
 
         # 2xx success
         if response.is_success:
-            try: return cast("dict[str, Any]", response.json())
+            try:
+                return cast("dict[str, Any]", response.json())
             except (ValueError, UnicodeDecodeError):
                 return {"text": response.text, "status_code": status}
 
@@ -204,8 +231,14 @@ class HttpClient:
         # 4xx responses that exchange-specific code handles via RequestData.
         # This matches the old requests-based behavior where only 404/410 raised.
         if 400 <= status < 500 and status not in (404, 410):
-            logger.warning(f"HTTP {status} response from {response.url}: {response.text[:200]}")
-            try: return cast("dict[str, Any]", response.json())
+            logger.warning(
+                "HTTP %s response from %s: %s",
+                status,
+                sanitize_url(str(response.url)),
+                sanitize_text(response.text[:200]),
+            )
+            try:
+                return cast("dict[str, Any]", response.json())
             except (ValueError, UnicodeDecodeError):
                 pass  # fall through to raise
 
@@ -224,23 +257,24 @@ class HttpClient:
             err = UnifiedRateLimitError(venue=self._venue, response=body)
             retry_after = response.headers.get("Retry-After")
             if retry_after is not None:
-                try:
+                with suppress(ValueError, TypeError):
                     err.retry_after = float(retry_after)
-                except (ValueError, TypeError):
-                    pass
             return err
         elif status in (401, 403):
+            message = body.get("msg", body.get("message", "Auth error"))
             return UnifiedAuthError(
                 venue=self._venue,
                 response=body,
-                message=f"HTTP {status}: {body.get('msg', body.get('message', 'Auth error'))}",
+                message=f"HTTP {status}: {sanitize_text(message)}",
             )
         elif status >= 500:
             return ServerError(venue=self._venue, status=status, response=body)
-        else: return RequestFailedError(
+        else:
+            message = body.get("msg", body.get("message", "Request failed"))
+            return RequestFailedError(
                 venue=self._venue,
                 status_code=status,
-                message=f"HTTP {status}: {body.get('msg', body.get('message', 'Request failed'))}",
+                message=f"HTTP {status}: {sanitize_text(message)}",
             )
 
     def close(self) -> None:
@@ -263,7 +297,7 @@ class HttpClient:
             except Exception as exc:
                 logger.warning(
                     f"Failed to close async HTTP client for {self._venue}: "
-                    f"{type(exc).__name__}: {exc}"
+                    f"{type(exc).__name__}: {sanitize_text(exc)}"
                 )
             return
 
@@ -276,7 +310,8 @@ class HttpClient:
         exc = task.exception()
         if exc is not None:
             logger.warning(
-                f"Failed to close async HTTP client for {self._venue}: {type(exc).__name__}: {exc}"
+                f"Failed to close async HTTP client for {self._venue}: "
+                f"{type(exc).__name__}: {sanitize_text(exc)}"
             )
 
     async def aclose(self) -> None:

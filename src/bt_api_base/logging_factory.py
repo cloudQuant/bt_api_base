@@ -1,12 +1,12 @@
 """
- —  logger 
- SpdLogManager(...).create_logger() 
+ —  logger
+ SpdLogManager(...).create_logger()
 
 :
     from bt_api_base.logging_factory import get_logger
     logger = get_logger("feed")          # -> logs/feed.log
     logger = get_logger("event_bus")     # -> logs/event_bus.log
-    logger = get_logger("api", print_info=True)  # 
+    logger = get_logger("api", print_info=True)  #
 """
 
 from __future__ import annotations
@@ -36,31 +36,93 @@ _logger_cache_lock = threading.Lock()
 
 
 class _LoggerProxy:
-    """Compatibility wrapper exposing both `warn` and `warning`."""
+    """Expose stdlib-style formatting over spdlog's one-string methods."""
 
     def __init__(self, logger: object) -> None:
         """__init__ method"""
         self._logger = logger
+        self._sink_failure_count = 0
+        self._sink_failure_lock = threading.Lock()
 
-    def warning(self, *args: Any, **kwargs: Any) -> None:
+    @property
+    def sink_failure_count(self) -> int:
+        """Return the number of formatting or sink failures suppressed by this proxy."""
+        try:
+            with self._sink_failure_lock:
+                return self._sink_failure_count
+        except Exception:
+            return 0
+
+    def _record_sink_failure(self) -> None:
+        """Record a logging failure without invoking another logger."""
+        try:
+            with self._sink_failure_lock:
+                self._sink_failure_count += 1
+        except Exception:
+            return
+
+    @staticmethod
+    def _format_message(args: tuple[Any, ...]) -> str:
+        """Render stdlib logging arguments for spdlog's one-string methods."""
+        if not args:
+            return ""
+        message = args[0]
+        if len(args) == 1:
+            return str(message)
+        if not isinstance(message, str):
+            return str(message)
+        values: object = args[1:]
+        if len(args) == 2 and isinstance(args[1], dict):
+            values = args[1]
+        try:
+            return message % values
+        except Exception:
+            # Logging must never replace the application exception being
+            # reported. Keep the template if a caller supplied invalid args.
+            return message
+
+    def _emit(
+        self, method_name: str, fallback_name: str | None, args: tuple[Any, ...]
+    ) -> None:
+        try:
+            method = getattr(self._logger, method_name, None)
+            if method is None and fallback_name is not None:
+                method = getattr(self._logger, fallback_name, None)
+            if method is not None:
+                method(self._format_message(args))
+        except Exception:
+            # A broken sink must not replace an exchange response or interrupt
+            # an authenticated websocket callback. Do not log recursively here.
+            self._record_sink_failure()
+            return
+
+    def debug(self, *args: Any, **_kwargs: Any) -> None:
+        """Log a debug message without leaking formatting args to spdlog."""
+        self._emit("debug", None, args)
+
+    def info(self, *args: Any, **_kwargs: Any) -> None:
+        """Log an info message without leaking formatting args to spdlog."""
+        self._emit("info", None, args)
+
+    def warning(self, *args: Any, **_kwargs: Any) -> None:
         """warning method"""
-        warning_method = getattr(self._logger, "warning", None)
-        if warning_method is not None:
-            warning_method(*args, **kwargs)
-            return
-        warn_method = getattr(self._logger, "warn", None)
-        if warn_method is not None:
-            warn_method(*args, **kwargs)
+        self._emit("warning", "warn", args)
 
-    def warn(self, *args: Any, **kwargs: Any) -> None:
+    def warn(self, *args: Any, **_kwargs: Any) -> None:
         """warn method"""
-        warn_method = getattr(self._logger, "warn", None)
-        if warn_method is not None:
-            warn_method(*args, **kwargs)
-            return
-        warning_method = getattr(self._logger, "warning", None)
-        if warning_method is not None:
-            warning_method(*args, **kwargs)
+        self._emit("warn", "warning", args)
+
+    def error(self, *args: Any, **_kwargs: Any) -> None:
+        """Log an error message without leaking formatting args to spdlog."""
+        self._emit("error", None, args)
+
+    def critical(self, *args: Any, **_kwargs: Any) -> None:
+        """Log a critical message without leaking formatting args to spdlog."""
+        self._emit("critical", "error", args)
+
+    def exception(self, *args: Any, **_kwargs: Any) -> None:
+        """Use the logger's exception method when available, otherwise error."""
+        self._emit("exception", "error", args)
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._logger, name)
@@ -77,17 +139,19 @@ def _resolve_log_file_name(file_name: str) -> str:
 
 def _build_custom_log_file_name(module: str) -> str:
     """Build a safe log file name for custom module keys."""
-    sanitized = "".join(ch if ch.isalnum() or ch in {"_", "-", "."} else "_" for ch in module)
+    sanitized = "".join(
+        ch if ch.isalnum() or ch in {"_", "-", "."} else "_" for ch in module
+    )
     sanitized = sanitized.strip("._") or "bt_api"
     return f"{sanitized}.log"
 
 
 def get_logger(module: str, print_info: bool = False) -> _LoggerProxy:
-    """ logger
+    """logger
 
     :param module: ， "api", "feed", "event_bus"，
                    （ {module}.log）
-    :param print_info: 
+    :param print_info:
     :return: spdlog logger （ _LoggerProxy ）
     """
     cache_key = (module, print_info)

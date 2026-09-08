@@ -38,7 +38,9 @@ def test_get_logger_sanitizes_custom_file_names(monkeypatch) -> None:
     logging_factory._logger_cache.pop(cache_key, None)
 
     class _FakeManager:
-        def __init__(self, *, file_name: str, logger_name: str, print_info: bool) -> None:
+        def __init__(
+            self, *, file_name: str, logger_name: str, print_info: bool
+        ) -> None:
             """__init__ method"""
             created_kwargs["file_name"] = file_name
             created_kwargs["logger_name"] = logger_name
@@ -74,6 +76,65 @@ def test_logger_proxy_supports_warn_and_warning() -> None:
     ]
 
 
+def test_logger_proxy_formats_stdlib_arguments_for_one_string_spdlog_methods() -> None:
+    """HTTP error logging must not hide the original exchange response."""
+    messages: list[tuple[str, str]] = []
+
+    class _StrictSpdLogger:
+        def info(self, message: str) -> None:
+            messages.append(("info", message))
+
+        def warn(self, message: str) -> None:
+            messages.append(("warn", message))
+
+        def error(self, message: str) -> None:
+            messages.append(("error", message))
+
+    proxy = logging_factory._LoggerProxy(_StrictSpdLogger())
+
+    proxy.info("connected to %s", "demo")
+    proxy.warning("HTTP %s response from %s", 401, "https://example.invalid")
+    proxy.exception("request %s failed", "account")
+
+    assert messages == [
+        ("info", "connected to demo"),
+        ("warn", "HTTP 401 response from https://example.invalid"),
+        ("error", "request account failed"),
+    ]
+
+
+def test_logger_proxy_handles_mapping_and_invalid_format_without_raising() -> None:
+    fake_logger = _FakeLogger()
+    proxy = logging_factory._LoggerProxy(fake_logger)
+
+    class BrokenString:
+        def __str__(self) -> str:
+            raise RuntimeError("formatting failed")
+
+    proxy.warning("venue=%(venue)s", {"venue": "okx"})
+    proxy.warning("missing %s %s", "one")
+    proxy.warning("broken %s", BrokenString())
+
+    assert fake_logger.messages == [
+        ("warning", ("venue=okx",), {}),
+        ("warning", ("missing %s %s",), {}),
+        ("warning", ("broken %s",), {}),
+    ]
+
+
+def test_logger_proxy_does_not_propagate_sink_failures() -> None:
+    class _FailingSink:
+        @staticmethod
+        def warning(_message: str) -> None:
+            raise OSError("log volume unavailable")
+
+    proxy = logging_factory._LoggerProxy(_FailingSink())
+
+    proxy.warning("exchange rejected order: %s", -2015)
+
+    assert proxy.sink_failure_count == 1
+
+
 def test_get_logger_cache_separates_print_info(monkeypatch) -> None:
     """test_get_logger_cache_separates_print_info function"""
     created: list[str] = []
@@ -81,7 +142,9 @@ def test_get_logger_cache_separates_print_info(monkeypatch) -> None:
         logging_factory._logger_cache.pop(cache_key, None)
 
     class _FakeManager:
-        def __init__(self, *, file_name: str, logger_name: str, print_info: bool) -> None:
+        def __init__(
+            self, *, file_name: str, logger_name: str, print_info: bool
+        ) -> None:
             """__init__ method"""
             created.append(f"{logger_name}:{print_info}")
 

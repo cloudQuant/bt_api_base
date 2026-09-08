@@ -482,6 +482,16 @@ class TestErrorFramework:
         err = OKXErrorTranslator.translate({"code": "50011", "msg": "Rate limit"}, "OKX")
         assert err.code == UnifiedErrorCode.RATE_LIMIT_EXCEEDED
 
+        # Demo/production environment mismatch and missing-key responses are
+        # both authentication failures, with distinct vendor wording.
+        mismatch = OKXErrorTranslator.translate({"code": "50101", "msg": ""}, "OKX")
+        assert mismatch.code == UnifiedErrorCode.INVALID_API_KEY
+        assert mismatch.message == "API key does not match the current environment"
+
+        missing = OKXErrorTranslator.translate({"code": "50119", "msg": ""}, "OKX")
+        assert missing.code == UnifiedErrorCode.INVALID_API_KEY
+        assert missing.message == "API key does not exist"
+
     @pytest.mark.skip(reason="CTPErrorTranslator not implemented in bt_api_base.error")
     def test_ctp_translator(self):
         """test_ctp_translator method"""

@@ -153,7 +153,15 @@ def test_gateway_runtime_command_server_uses_adapter_methods() -> None:
         time.sleep(0.05)
         client.connect()
         balance = client.get_balance()
-        order = client.submit_order({"data_name": "RB2510", "size": 1, "price": 3500.0})
+        order = client.submit_order(
+            {
+                "data_name": "RB2510",
+                "size": 1,
+                "price": 3500.0,
+                "side": "buy",
+                "order_type": "limit",
+            }
+        )
     finally:
         client.disconnect()
         runtime.stop()

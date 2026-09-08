@@ -1,10 +1,12 @@
 """Module documentation"""
+
 from __future__ import annotations
 
 import asyncio
 import json
+import ssl
 import traceback
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Mapping
 from threading import Thread
 from typing import Any, cast
 
@@ -12,6 +14,7 @@ from typing import Any, cast
 # from aiohttp import ClientTimeout
 from aiohttp import ClientSession, ClientTimeout, TCPConnector
 
+from bt_api_base.exceptions import ConfigurationError, RequestFailedError
 from bt_api_base.functions.calculate_time import get_string_tz_time
 from bt_api_base.logging_factory import get_logger
 
@@ -20,6 +23,7 @@ __all__ = ["AsyncBase"]
 
 class AsyncBase:
     """Class AsyncBase"""
+
     def __init__(self, **kwargs: Any) -> None:
         """__init__ method"""
         self.loop: asyncio.AbstractEventLoop | None = None
@@ -27,6 +31,7 @@ class AsyncBase:
         self.client_timeout = 5
         self.limit = 100
         self.session: ClientSession | None = None
+        self._ssl_context = self._resolve_ssl_context(kwargs)
         self.async_proxy: str | None = kwargs.get("async_proxy")
         if self.async_proxy is None:
             import urllib.request
@@ -57,7 +62,9 @@ class AsyncBase:
                     self.loop = loop
                 loop.run_forever()
             except Exception:
-                self.async_base_logger.error(traceback.format_exc(), exc_info=True)
+                from bt_api_base.feeds.transport_safety import sanitize_text
+
+                self.async_base_logger.error(sanitize_text(traceback.format_exc()))
                 if not loop.is_closed():
                     loop.close()
 
@@ -79,9 +86,45 @@ class AsyncBase:
         if callback is not None:
             future.add_done_callback(callback)
 
+    @classmethod
+    def _resolve_ssl_context(cls, options: Mapping[str, Any]) -> ssl.SSLContext:
+        """Return a verified TLS context and reject opt-out configuration."""
+        for key in ("verify_ssl", "ssl_verify"):
+            if key in options and options[key] is not True:
+                raise ConfigurationError(f"{key} cannot disable TLS certificate verification")
+
+        configured = [options[key] for key in ("ssl", "async_ssl", "ssl_context") if key in options]
+        if any(value is False for value in configured):
+            raise ConfigurationError("TLS certificate verification cannot be disabled")
+        contexts = [value for value in configured if isinstance(value, ssl.SSLContext)]
+        if len({id(value) for value in contexts}) > 1:
+            raise ConfigurationError("Conflicting TLS contexts were provided")
+        unsupported = [
+            value
+            for value in configured
+            if value is not None and value is not True and not isinstance(value, ssl.SSLContext)
+        ]
+        if unsupported:
+            raise ConfigurationError("TLS configuration must be True or a verified SSLContext")
+        context = contexts[0] if contexts else ssl.create_default_context()
+        return cls._require_verified_ssl_context(context)
+
+    @staticmethod
+    def _require_verified_ssl_context(context: ssl.SSLContext) -> ssl.SSLContext:
+        if not context.check_hostname or context.verify_mode != ssl.CERT_REQUIRED:
+            raise ConfigurationError(
+                "TLS context must enable hostname checks and require certificate validation"
+            )
+        return context
+
     def get_session(self) -> ClientSession:
         """get_session method"""
-        conn = TCPConnector(ssl=False, keepalive_timeout=self.keepalive_timeout, limit=100)
+        ssl_context = self._require_verified_ssl_context(self._ssl_context)
+        conn = TCPConnector(
+            ssl=ssl_context,
+            keepalive_timeout=self.keepalive_timeout,
+            limit=self.limit,
+        )
         session = ClientSession(connector=conn)
         return session
 
@@ -100,12 +143,14 @@ class AsyncBase:
         timeout: float | None = None,
     ) -> dict[Any, Any]:
         """async_http_request method"""
+        failure: RequestFailedError | None = None
         try:
             session = self.session
             if session is None or session.closed:
                 session = self.get_session()
                 self.session = session
-            params: dict[str, object] = {}
+            # Signed requests must not follow redirects to a different origin.
+            params: dict[str, object] = {"allow_redirects": False}
             if timeout is not None:
                 params["timeout"] = ClientTimeout(total=float(timeout))
             if headers is not None:
@@ -120,11 +165,28 @@ class AsyncBase:
             async with func(url, **params) as resp:
                 ret = await resp.json(content_type=None)
             return cast("dict[Any, Any]", ret)
-        except Exception:
-            self.async_base_logger.info(
-                f"""rest_async:{get_string_tz_time()} {traceback.format_exc()}"""
+        except Exception as error:
+            from bt_api_base.feeds.transport_safety import (
+                sanitize_text,
+                sensitive_mapping_values,
             )
-            raise
+
+            sensitive_values = sensitive_mapping_values(headers)
+            if isinstance(body, Mapping):
+                sensitive_values += sensitive_mapping_values(body)
+            message = sanitize_text(error, sensitive_values=sensitive_values)
+            safe_traceback = sanitize_text(
+                traceback.format_exc(), sensitive_values=sensitive_values
+            )
+            self.async_base_logger.info(f"rest_async:{get_string_tz_time()} {safe_traceback}")
+            failure = RequestFailedError(
+                venue=str(getattr(self, "exchange_name", "")),
+                message=f"Async request failed: {message}",
+            )
+
+        # Raise outside the except block so Python does not retain the raw
+        # aiohttp exception (and its signed request URL) as __context__.
+        raise failure
 
 
 def _main() -> None:

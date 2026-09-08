@@ -131,15 +131,45 @@ class UnifiedError(BtApiError):
     original_error: str | None = None
     context: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        """Remove credential material before the error becomes observable."""
+        # Import lazily to avoid the feed package's public re-export cycle while
+        # bt_api_base.error itself is being imported by the HTTP client.
+        from bt_api_base.feeds.transport_safety import sanitize_value
+
+        sanitized = sanitize_value(
+            {
+                "message": self.message,
+                "original_error": self.original_error,
+                "context": self.context,
+            }
+        )
+        self.message = sanitized["message"]
+        self.original_error = sanitized["original_error"]
+        self.context = sanitized["context"]
+        # Exception.__new__ captures constructor arguments before this dataclass
+        # initializer runs. Replace them so pickling/debuggers cannot expose the
+        # unsanitized arguments supplied by a caller.
+        Exception.__init__(self, self.message)
+
     def __str__(self) -> str:
         return f"[{self.venue}] {self.code.name}: {self.message}"
 
     def __repr__(self) -> str:
         return f"UnifiedError(code={self.code.name}, venue={self.venue}, message={self.message!r})"
 
+    @property
+    def raw_response(self) -> Any:
+        """Return a safe copy of the vendor response, when one is available."""
+        from bt_api_base.feeds.transport_safety import sanitize_value
+
+        return sanitize_value(self.context.get("raw_response"))
+
     def to_dict(self) -> dict[str, Any]:
         """to_dict method"""
-        return {
+        from bt_api_base.feeds.transport_safety import sanitize_value
+
+        payload = {
             "code": self.code.value,
             "code_name": self.code.name,
             "category": self.category.value,
@@ -148,6 +178,7 @@ class UnifiedError(BtApiError):
             "original_error": self.original_error,
             "context": self.context,
         }
+        return sanitize_value(payload)
 
 
 # ──  ──────────────────────────────────────────────
@@ -339,7 +370,7 @@ class ErrorTranslator:
             return ErrorCategory.SYSTEM
         elif 6000 <= v < 7000:
             return ErrorCategory.CAPABILITY
-        else: return ErrorCategory.VALIDATION
+        return ErrorCategory.VALIDATION
 
 
 class OKXErrorTranslator(ErrorTranslator):
@@ -354,11 +385,15 @@ class OKXErrorTranslator(ErrorTranslator):
         "50013": (UnifiedErrorCode.EXCHANGE_OVERLOADED, "System busy"),
         "50014": (UnifiedErrorCode.INVALID_PARAMETER, "Parameter error"),
         "50100": (UnifiedErrorCode.INVALID_API_KEY, "API frozen"),
-        "50101": (UnifiedErrorCode.INVALID_API_KEY, "API key does not match"),
+        "50101": (
+            UnifiedErrorCode.INVALID_API_KEY,
+            "API key does not match the current environment",
+        ),
         "50102": (UnifiedErrorCode.EXPIRED_TIMESTAMP, "Timestamp expired"),
         "50103": (UnifiedErrorCode.INVALID_SIGNATURE, "Signature invalid"),
         "50104": (UnifiedErrorCode.PERMISSION_DENIED, "No permission"),
         "50105": (UnifiedErrorCode.PERMISSION_DENIED, "IP not whitelisted"),
+        "50119": (UnifiedErrorCode.INVALID_API_KEY, "API key does not exist"),
         "51000": (UnifiedErrorCode.INVALID_PARAMETER, "Parameter error"),
         "51001": (UnifiedErrorCode.INVALID_SYMBOL, "Instrument ID does not exist"),
         "51004": (UnifiedErrorCode.INVALID_VOLUME, "Order amount too small"),

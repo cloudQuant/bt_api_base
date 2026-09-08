@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime
+import math
 import os
 import random
 import ssl
@@ -11,7 +12,14 @@ import traceback
 from typing import Any
 
 import websocket
+from websocket import _app as websocket_app_module
+from websocket._handshake import SUPPORTED_REDIRECT_STATUSES
 
+from bt_api_base.feeds.transport_safety import (
+    sanitize_text,
+    sanitize_url,
+    sanitize_value,
+)
 from bt_api_base.functions.utils import get_project_log_path
 from bt_api_base.logging_factory import get_logger
 
@@ -26,6 +34,44 @@ _PROXY_ENV_KEYS = (
     "socks_proxy",
 )
 
+
+class _NoRedirectWebSocket(websocket_app_module.WebSocket):
+    """WebSocketApp transport that rejects every HTTP redirect before callbacks run."""
+
+    _btapi_redirects_disabled = True
+
+    def connect(self, url: str, **options: Any) -> None:
+        # WebSocketApp does not expose redirect_limit. Passing zero prevents the
+        # library from opening the redirect target, and the explicit status
+        # check prevents a 30x response from being treated as an open socket.
+        options["redirect_limit"] = 0
+        super().connect(url, **options)
+        response = self.handshake_response
+        if response is None or response.status not in SUPPORTED_REDIRECT_STATUSES:
+            return
+        sock = self.sock
+        if sock is not None:
+            sock.close()
+        self.sock = None
+        self.connected = False
+        raise websocket.WebSocketException("WebSocket redirects are disabled")
+
+
+if not getattr(websocket_app_module.WebSocket, "_btapi_redirects_disabled", False):
+    # WebSocketApp resolves this module global whenever it creates its socket.
+    # Installing the fail-closed transport once covers all SDK streams without
+    # changing websocket-client or holding a lock for the connection lifetime.
+    websocket_app_module.WebSocket = _NoRedirectWebSocket
+
+
+class WebSocketSubscriptionError(RuntimeError):
+    """A deterministic subscription rejection that must stop automatic retries."""
+
+    def __init__(self, message: str, *, code: Any = None) -> None:
+        self.code = sanitize_text(code) if code is not None else None
+        self.fatal = True
+        super().__init__(sanitize_text(message))
+
 # from bt_api_base.containers.exchanges.binance_swap_exchange_data import BinanceExchangeData
 # from bt_api_base.containers.exchanges.okx_swap_exchange_data import OkxSwapExchangeData
 
@@ -37,6 +83,8 @@ class MyWebsocketApp:
         self.ws: websocket.WebSocketApp | None = None
         self.data_queue = data_queue
         self.wss_name = kwargs.get("wss_name", "default_name")
+        self._stream_role = kwargs.get("stream_role", "market")
+        self._connection_generation = 0
         self._params = kwargs.get("exchange_data")
         self.wss_url = kwargs.get("wss_url")
         if self.wss_url is None:
@@ -44,7 +92,11 @@ class MyWebsocketApp:
             self.wss_url = self._params.get_wss_url()
         self.ping_interval = kwargs.get("ping_interval", 10)
         self.ping_timeout = kwargs.get("ping_timeout", 5)
-        self.sslopt = kwargs.get("sslopt", {"cert_reqs": ssl.CERT_NONE})
+        self.sslopt = dict(kwargs.get("sslopt") or {})
+        cert_reqs = self.sslopt.setdefault("cert_reqs", ssl.CERT_REQUIRED)
+        check_hostname = self.sslopt.setdefault("check_hostname", True)
+        if cert_reqs != ssl.CERT_REQUIRED or check_hostname is not True:
+            raise ValueError("WebSocket TLS certificate and hostname verification are required")
         self.start_config = {
             "ping_interval": self.ping_interval,
             "ping_timeout": self.ping_timeout,
@@ -73,7 +125,34 @@ class MyWebsocketApp:
         self.log_file_name = kwargs.get("log_file_name", default_log)
         self.wss_logger = get_logger("unknown")
         self._running_flag = False  # ，
-        self._restart_flag = True  # 
+        self._restart_flag = True
+        self._stop_event = threading.Event()
+        self._shutdown_timeout = float(kwargs.get("shutdown_timeout", 5.0))
+        raw_idle_timeout = kwargs.get("message_idle_timeout", 0.0)
+        if isinstance(raw_idle_timeout, bool):
+            raise ValueError("message_idle_timeout must be a finite nonnegative number")
+        self.message_idle_timeout = float(raw_idle_timeout)
+        if not math.isfinite(self.message_idle_timeout) or self.message_idle_timeout < 0:
+            raise ValueError("message_idle_timeout must be a finite nonnegative number")
+        raw_readiness_timeout = kwargs.get("readiness_timeout", 30.0)
+        if isinstance(raw_readiness_timeout, bool):
+            raise ValueError("readiness_timeout must be a finite nonnegative number")
+        self.readiness_timeout = float(raw_readiness_timeout)
+        if not math.isfinite(self.readiness_timeout) or self.readiness_timeout < 0:
+            raise ValueError("readiness_timeout must be a finite nonnegative number")
+        self._last_message_at: float | None = None
+        self._awaiting_ready = False
+        self._tracking_subscription_batch = False
+        self._pending_subscription_acks = 0
+        self._subscription_batch_send_count = 0
+        self._idle_close_requested = False
+        self._readiness_deadline: float | None = None
+        self._readiness_generation = 0
+        self._readiness_ws: websocket.WebSocketApp | None = None
+        self._subscription_lock = threading.Lock()
+        self._watchdog_process: threading.Thread | None = None
+        self._readiness_watchdog_process: threading.Thread | None = None
+        self._restart_process: threading.Thread | None = None
         self.process = threading.Thread(target=self.run, daemon=True)
 
         # ──  ──────────────────────────────────────
@@ -100,20 +179,121 @@ class MyWebsocketApp:
         req = self._params.get_wss_path(**kwargs)
         if self.ws is None:
             raise ConnectionError("WebSocket connection not established")
-        self.ws.send(req)
+        tracked = False
+        with self._subscription_lock:
+            if self._tracking_subscription_batch:
+                self._pending_subscription_acks += 1
+                self._subscription_batch_send_count += 1
+                tracked = True
+        try:
+            self.ws.send(req)
+        except Exception:
+            if tracked:
+                with self._subscription_lock:
+                    self._pending_subscription_acks = max(
+                        0, self._pending_subscription_acks - 1
+                    )
+                    self._subscription_batch_send_count = max(
+                        0, self._subscription_batch_send_count - 1
+                    )
+            raise
         # time.sleep(0.3)
+
+    def _begin_subscription_batch(self) -> None:
+        """Track exchange acknowledgements for subscriptions sent in one batch."""
+        with self._subscription_lock:
+            self._awaiting_ready = True
+            self._tracking_subscription_batch = True
+            self._pending_subscription_acks = 0
+            self._subscription_batch_send_count = 0
+
+    def _end_subscription_batch(self) -> bool:
+        """Finish sending a batch and report whether no acknowledgement is needed."""
+        with self._subscription_lock:
+            self._tracking_subscription_batch = False
+            return self._pending_subscription_acks == 0
+
+    def _subscription_acknowledged(self) -> None:
+        """Mark one tracked subscription ready and publish readiness after the last ACK."""
+        with self._subscription_lock:
+            if self._pending_subscription_acks <= 0:
+                return
+            self._pending_subscription_acks -= 1
+            ready = (
+                self._pending_subscription_acks == 0
+                and not self._tracking_subscription_batch
+            )
+        if ready:
+            self._mark_ready()
+
+    def _mark_ready(self) -> None:
+        """Publish readiness once the transport and requested subscriptions are active."""
+        with self._subscription_lock:
+            already_ready = self._running_flag and not self._awaiting_ready
+            self._awaiting_ready = False
+            self._idle_close_requested = False
+            self._readiness_deadline = None
+            self._last_message_at = time.monotonic()
+            self._running_flag = True
+        self._reset_backoff()
+        if not already_ready:
+            self._emit_event("ws.connected")
 
     def _emit_event(self, event_type, **payload):
         """ EventBus  WebSocket （）."""
         if self._event_bus is not None:
+            params = getattr(self, "_params", None)
+            safe_payload = sanitize_value(payload)
             self._event_bus.emit(
                 event_type,
                 {
-                    "wss_name": self.wss_name,
-                    "wss_url": self.wss_url,
-                    **payload,
+                    **safe_payload,
+                    "wss_name": sanitize_text(getattr(self, "wss_name", "unknown")),
+                    "wss_url": sanitize_url(getattr(self, "wss_url", None)),
+                    "exchange_name": sanitize_text(
+                        getattr(params, "exchange_name", "unknown")
+                    ),
+                    "asset_type": sanitize_text(getattr(self, "asset_type", "unknown")),
+                    "stream_role": sanitize_text(
+                        getattr(self, "_stream_role", "unknown")
+                    ),
+                    "connection_generation": getattr(
+                        self, "_connection_generation", 0
+                    ),
                 },
             )
+
+    def _safe_failure(self, error: Any) -> str:
+        return sanitize_text(error, sensitive_values=self._credential_values())
+
+    def _safe_traceback(self) -> str:
+        return sanitize_text(
+            traceback.format_exc(), sensitive_values=self._credential_values()
+        )
+
+    def _credential_values(self) -> tuple[Any, ...]:
+        values = []
+        params = getattr(self, "_params", None)
+        for name in (
+            "public_key",
+            "private_key",
+            "api_key",
+            "api_secret",
+            "secret_key",
+            "passphrase",
+            "listen_key",
+        ):
+            for owner in (self, params):
+                value = getattr(owner, name, None) if owner is not None else None
+                if value not in (None, ""):
+                    values.append(value)
+        return tuple(dict.fromkeys(str(value) for value in values))
+
+    def _log_callback_failure(self, error: Any) -> None:
+        self.wss_logger.warning(
+            f"{sanitize_text(self.wss_name)},{sanitize_url(self.wss_url)},"
+            f"{self._safe_failure(error)},{self._safe_traceback()}"
+        )
 
     def _backoff_delay(self):
         """（），."""
@@ -129,13 +309,48 @@ class MyWebsocketApp:
 
     def on_open(self, _ws):
         """on_open method"""
+        self._connection_generation += 1
+        opened_at = time.monotonic()
+        with self._subscription_lock:
+            self._last_message_at = opened_at
+            self._awaiting_ready = True
+            self._idle_close_requested = False
+            self._readiness_generation = self._connection_generation
+            self._readiness_ws = _ws
+            self._readiness_deadline = (
+                opened_at + self.readiness_timeout
+                if self.readiness_timeout > 0
+                else None
+            )
         try:
-            self.open_rsp()
+            ready = self.open_rsp()
         except Exception as e:
-            self.wss_logger.warning(f"{self.wss_name},{self.wss_url},{e},{traceback.format_exc()}")
-        self._running_flag = True
-        self._reset_backoff()
-        self._emit_event("ws.connected")
+            self._log_callback_failure(e)
+            self._running_flag = False
+            with self._subscription_lock:
+                self._awaiting_ready = False
+                self._readiness_deadline = None
+            payload = {"error": self._safe_failure(e)}
+            if isinstance(e, WebSocketSubscriptionError):
+                payload["fatal"] = True
+                if e.code is not None:
+                    payload["code"] = e.code
+                self._stop_event.set()
+            self._emit_event("ws.subscription_error", **payload)
+            ws = self.ws or _ws
+            if ws is not None:
+                try:
+                    ws.close()
+                except Exception as close_error:
+                    self._log_callback_failure(close_error)
+            return
+        if ready is False:
+            self._emit_event(
+                "ws.subscription_pending",
+                pending=self._pending_subscription_acks,
+            )
+            return
+        self._mark_ready()
 
     def open_rsp(self):
         """open_rsp method"""
@@ -143,10 +358,30 @@ class MyWebsocketApp:
 
     def on_message(self, _ws, message):
         """on_message method"""
+        self._last_message_at = time.monotonic()
         try:
             self.message_rsp(message)
         except Exception as e:
-            self.wss_logger.warning(f"{self.wss_name},{self.wss_url},{e},{traceback.format_exc()}")
+            self._log_callback_failure(e)
+            subscription_error = isinstance(e, WebSocketSubscriptionError)
+            event_type = "ws.subscription_error" if subscription_error else "ws.message_error"
+            payload = {"error": self._safe_failure(e)}
+            if subscription_error:
+                payload["fatal"] = True
+                if e.code is not None:
+                    payload["code"] = e.code
+                self._stop_event.set()
+            self._emit_event(event_type, **payload)
+            self._running_flag = False
+            with self._subscription_lock:
+                self._awaiting_ready = False
+                self._readiness_deadline = None
+            ws = self.ws or _ws
+            if ws is not None:
+                try:
+                    ws.close()
+                except Exception as close_error:
+                    self._log_callback_failure(close_error)
 
     # noinspection PyMethodMayBeStatic
     def message_rsp(self, message):
@@ -155,33 +390,43 @@ class MyWebsocketApp:
 
     def on_error(self, _ws, error):
         """on_error method"""
+        safe_error = self._safe_failure(error)
         try:
-            self.error_rsp(f"error: {error}")
+            self.error_rsp(f"error: {safe_error}")
         except Exception as e:
-            self.wss_logger.warning(f"{self.wss_name},{self.wss_url},{e},{traceback.format_exc()}")
-        self._emit_event("ws.error", error=str(error))
+            self._log_callback_failure(e)
+        self._emit_event("ws.error", error=safe_error)
 
     # noinspection PyMethodMayBeStatic
     def error_rsp(self, error):
         """error_rsp method"""
-        self.wss_logger.warning(f"name: {self.wss_name}, url: {self.wss_url}, error: {error}")
+        self.wss_logger.warning(
+            f"name: {sanitize_text(self.wss_name)}, url: {sanitize_url(self.wss_url)}, "
+            f"error: {self._safe_failure(error)}"
+        )
 
     def on_close(self, _ws, _close_status_code, _close_msg):
         """on_close method"""
         self._running_flag = False
+        with self._subscription_lock:
+            self._awaiting_ready = False
+            self._tracking_subscription_batch = False
+            self._pending_subscription_acks = 0
+            self._subscription_batch_send_count = 0
+            self._idle_close_requested = False
+            self._readiness_deadline = None
+        self._last_message_at = None
         self._emit_event("ws.disconnected", code=_close_status_code, msg=_close_msg)
         try:
             self.close_rsp(self._restart_flag)
         except Exception as e:
-            self.wss_logger.warning(f"{self.wss_name},{self.wss_url},{e},{traceback.format_exc()}")
+            self._log_callback_failure(e)
 
     def on_ping(self, _ws, ping):
         """on_ping method"""
         self.wss_logger.info(
             f"===== {time.strftime('%Y-%m-%d %H:%M:%S')} Websocket ping {ping} ====="
         )
-        if self.ws is not None and self.ws.sock is not None:
-            self.ws.sock.pong(ping)
 
     def on_pong(self, _ws, pong):
         """on_pong method"""
@@ -215,24 +460,12 @@ class MyWebsocketApp:
         )
 
     def run(self):
-        # websocket.enableTrace(True)  # 
-        # 
-        # print("run begin")
-        """run method"""
+        """Run the socket, reconnecting only while the stream remains active."""
         websocket.setdefaulttimeout(self.ping_timeout)
         if self.wss_url is None:
             raise ValueError("wss_url is required for WebSocket connection")
-        self.ws = websocket.WebSocketApp(
-            self.wss_url,
-            on_open=self.on_open,
-            on_message=self.on_message,
-            on_error=self.on_error,
-            on_close=self.on_close,
-            on_ping=self.on_ping,
-            on_pong=self.on_pong,
-        )
-        while True:
-            # 
+        stop_event = self._stop_event
+        while not stop_event.is_set():
             if (
                 self._max_reconnect_attempts > 0
                 and self._reconnect_attempt >= self._max_reconnect_attempts
@@ -244,6 +477,8 @@ class MyWebsocketApp:
                 break
 
             try:
+                ws = self._create_websocket_app()
+                self.ws = ws
                 run_kwargs = {
                     "ping_interval": self.ping_interval,
                     "ping_timeout": self.ping_timeout,
@@ -257,47 +492,91 @@ class MyWebsocketApp:
                 elif self.http_proxy_host == "":
                     self._clear_proxy_env()
                     run_kwargs["http_no_proxy"] = ["*"]
-                if self.ws is not None:
-                    self.ws.run_forever(**run_kwargs)
+                if not stop_event.is_set():
+                    ws.run_forever(**run_kwargs)
                 self.wss_logger.info("----------wss running----------------")
             except Exception as e:
-                self.wss_logger.warning(
-                    f"{self.wss_name},{self.wss_url},{e},{traceback.format_exc()}"
-                )
+                self._log_callback_failure(e)
 
-            # 
+            if stop_event.is_set():
+                break
             self._reconnect_attempt += 1
             delay = self._backoff_delay()
             self._emit_event("ws.reconnecting", attempt=self._reconnect_attempt, delay=delay)
             self.wss_logger.info(
                 f"{self.wss_name}: reconnecting in {delay:.1f}s (attempt {self._reconnect_attempt})"
             )
-            time.sleep(delay)
+            stop_event.wait(delay)
+        self._running_flag = False
+        stop_event.set()
 
     def start(self, connect_timeout=30):
         """start method"""
-        self.process = threading.Thread(target=self.run, daemon=True)
-        self.process.start()
-        _elapsed: float = 0.0
         if self._params is None:
             raise ValueError("exchange_data (params) is required to start WebSocket")
-        while not self._running_flag:
+        if isinstance(connect_timeout, bool):
+            raise ValueError("connect_timeout must be a finite nonnegative number")
+        connect_timeout = float(connect_timeout)
+        if not math.isfinite(connect_timeout) or connect_timeout < 0:
+            raise ValueError("connect_timeout must be a finite nonnegative number")
+        worker_running = self.process.is_alive()
+        if worker_running:
+            if self._stop_event.is_set():
+                raise RuntimeError("Previous WebSocket worker has not stopped")
+        else:
+            for old_worker in (
+                self._restart_process,
+                self._watchdog_process,
+                self._readiness_watchdog_process,
+            ):
+                if old_worker is not None and old_worker.is_alive():
+                    old_worker.join(timeout=self._shutdown_timeout)
+                    if old_worker.is_alive():
+                        raise RuntimeError("Previous WebSocket helper worker has not stopped")
+            self._stop_event = threading.Event()
+            self._restart_flag = True
+            self._running_flag = False
+            self._reset_backoff()
+            self.process = threading.Thread(target=self.run, daemon=True)
+            self.process.start()
+            if self.message_idle_timeout > 0:
+                self._watchdog_process = threading.Thread(
+                    target=self._message_idle_watchdog,
+                    daemon=True,
+                )
+                self._watchdog_process.start()
+            if self.readiness_timeout > 0:
+                self._readiness_watchdog_process = threading.Thread(
+                    target=self._readiness_watchdog,
+                    daemon=True,
+                )
+                self._readiness_watchdog_process.start()
+        ready_deadline = time.monotonic() + connect_timeout
+        while not self._running_flag and not self._stop_event.is_set():
             self.wss_logger.info(
                 f"===== {time.strftime('%Y-%m-%d %H:%M:%S')} "
                 f"Wait {self._params.exchange_name} Websocket Connecting... ====="
             )
-            time.sleep(0.5)
-            _elapsed += 0.5
-            if _elapsed >= connect_timeout:
+            remaining = ready_deadline - time.monotonic()
+            if remaining <= 0:
                 self.wss_logger.warning(
                     f"===== {time.strftime('%Y-%m-%d %H:%M:%S')} "
                     f"{self._params.exchange_name} Websocket Connect Timeout ({connect_timeout}s)! ====="
                 )
-                break
-        # 
-        if self.restart_gap:
-            restart_timer = threading.Thread(target=self.restart_timer)
-            restart_timer.start()
+                self.stop()
+                raise TimeoutError(
+                    f"{self._params.exchange_name} WebSocket was not ready within connect_timeout"
+                )
+            self._stop_event.wait(min(0.5, remaining))
+        if not self._running_flag:
+            raise ConnectionError(f"{self._params.exchange_name} WebSocket stopped before ready")
+        if (
+            self.restart_gap
+            and not self._stop_event.is_set()
+            and (self._restart_process is None or not self._restart_process.is_alive())
+        ):
+            self._restart_process = threading.Thread(target=self.restart_timer, daemon=True)
+            self._restart_process.start()
 
     def restart(self):
         # ws, ws
@@ -308,24 +587,121 @@ class MyWebsocketApp:
         self.start()
 
     def stop(self):
-        """stop method"""
+        """Close the socket and stop reconnect/timer workers within a bounded wait."""
         self._restart_flag = False
-        if self.ws is not None:
-            self.ws.close()
+        self._running_flag = False
+        self._stop_event.set()
+        ws = self.ws
+        if ws is not None:
+            ws.close()
+        current = threading.current_thread()
+        deadline = time.monotonic() + self._shutdown_timeout
+        for worker in (
+            self.process,
+            self._restart_process,
+            self._watchdog_process,
+            self._readiness_watchdog_process,
+        ):
+            if worker is not None and worker is not current and worker.is_alive():
+                worker.join(timeout=max(0.0, deadline - time.monotonic()))
+                if worker.is_alive():
+                    raise RuntimeError("WebSocket worker did not stop within shutdown_timeout")
             self.ws = None
 
+    def _readiness_watchdog(self):
+        """Reconnect a transport that never completes login or subscription setup."""
+        timeout = self.readiness_timeout
+        if timeout <= 0:
+            return
+        interval = min(0.5, max(0.01, timeout / 4.0))
+        stop_event = self._stop_event
+        while not stop_event.wait(interval):
+            with self._subscription_lock:
+                deadline = self._readiness_deadline
+                expected_ws = self._readiness_ws
+                generation = self._readiness_generation
+                awaiting_ready = self._awaiting_ready
+            if not awaiting_ready or deadline is None or expected_ws is None:
+                continue
+            if time.monotonic() <= deadline:
+                continue
+            with self._subscription_lock:
+                if (
+                    not self._awaiting_ready
+                    or self._readiness_deadline != deadline
+                    or self._readiness_generation != generation
+                    or self._readiness_ws is not expected_ws
+                    or self.ws is not expected_ws
+                ):
+                    continue
+                self._awaiting_ready = False
+                self._running_flag = False
+                self._readiness_deadline = None
+            self._emit_event(
+                "ws.readiness_timeout",
+                timed_out_generation=generation,
+                timeout_seconds=timeout,
+            )
+            try:
+                expected_ws.close()
+            except Exception as error:
+                self._log_callback_failure(error)
+
+    def _message_idle_watchdog(self):
+        """Reconnect an open socket whose application messages have gone silent."""
+        timeout = self.message_idle_timeout
+        if timeout <= 0:
+            return
+        interval = min(1.0, max(0.05, timeout / 4.0))
+        stop_event = self._stop_event
+        while not stop_event.wait(interval):
+            with self._subscription_lock:
+                last_message_at = self._last_message_at
+                expected_ws = self.ws
+                generation = self._connection_generation
+                active = self._running_flag or self._awaiting_ready
+            if not active or last_message_at is None or expected_ws is None:
+                continue
+            idle_seconds = time.monotonic() - last_message_at
+            if idle_seconds <= timeout:
+                continue
+            # Latch the close request before close so a slow callback cannot
+            # trigger repeated closes. run_forever owns the reconnect.
+            with self._subscription_lock:
+                if (
+                    self._idle_close_requested
+                    or self.ws is not expected_ws
+                    or self._connection_generation != generation
+                    or self._last_message_at != last_message_at
+                ):
+                    continue
+                self._idle_close_requested = True
+                self._running_flag = False
+                self._awaiting_ready = False
+                self._readiness_deadline = None
+            self._emit_event(
+                "ws.message_idle",
+                idle_seconds=idle_seconds,
+                timeout_seconds=timeout,
+                timed_out_generation=generation,
+            )
+            try:
+                expected_ws.close()
+            except Exception as error:
+                self._log_callback_failure(error)
+
     def restart_timer(self):
-        """."""
+        """Periodically reconnect the socket, exiting promptly when stopped."""
         time_gap = self.restart_gap
-        while True:
-            time.sleep(time_gap)
+        stop_event = self._stop_event
+        while not stop_event.wait(time_gap):
             try:
                 self.wss_logger.info("restartTimer Working....")
-                self.restart()
+                ws = self.ws
+                if ws is not None:
+                    ws.close()
             except Exception as e:
-                self.wss_logger.warning(
-                    f"{self.wss_name},{self.wss_url},{e},{traceback.format_exc()}"
-                )
+                self._log_callback_failure(e)
 
 
 if __name__ == "__main__":
@@ -339,5 +715,5 @@ if __name__ == "__main__":
                     exc.start()
             except Exception as e:
                 get_logger("my_websocket_app").debug(
-                    "WebSocket restart task error: %s", e, exc_info=True
+                    "WebSocket restart task error: %s", sanitize_text(e)
                 )

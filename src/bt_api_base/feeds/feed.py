@@ -5,12 +5,17 @@ from __future__ import annotations
 import time as _time
 from collections.abc import Mapping
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from bt_api_base.exceptions import RequestError, RequestFailedError, RequestTimeoutError
 from bt_api_base.feeds.capability import CapabilityMixin
 from bt_api_base.feeds.connection_mixin import ConnectionMixin
 from bt_api_base.feeds.http_client import HttpClient
+from bt_api_base.feeds.transport_safety import (
+    is_sensitive_key,
+    sanitize_text,
+    sanitize_url,
+    sanitize_value,
+)
 from bt_api_base.functions.async_base import AsyncBase
 from bt_api_base.logging_factory import get_logger
 
@@ -36,52 +41,13 @@ class Feed(AsyncBase, ConnectionMixin, CapabilityMixin):
         )
 
     def _is_sensitive_key(self, key: Any) -> bool:
-        normalized = str(key).replace("-", "").replace("_", "").lower()
-        sensitive_tokens = (
-            "apikey",
-            "accesskey",
-            "secret",
-            "token",
-            "signature",
-            "password",
-            "passphrase",
-            "authorization",
-            "privatekey",
-            "publickey",
-        )
-        return any(token in normalized for token in sensitive_tokens)
+        return is_sensitive_key(key)
 
     def _sanitize_for_log(self, value: Any) -> Any:
-        if isinstance(value, Mapping):
-            return {
-                key: "***" if self._is_sensitive_key(key) else self._sanitize_for_log(item)
-                for key, item in value.items()
-            }
-        if isinstance(value, list):
-            return [self._sanitize_for_log(item) for item in value]
-        if isinstance(value, tuple):
-            return tuple(self._sanitize_for_log(item) for item in value)
-        return value
+        return sanitize_value(value)
 
     def _sanitize_url_for_log(self, url: Any) -> Any:
-        if not isinstance(url, str):
-            return url
-        parsed = urlsplit(url)
-        if not parsed.query:
-            return url
-        query_items = parse_qsl(parsed.query, keep_blank_values=True)
-        sanitized_query = [
-            (key, "***" if self._is_sensitive_key(key) else value) for key, value in query_items
-        ]
-        return urlunsplit(
-            (
-                parsed.scheme,
-                parsed.netloc,
-                parsed.path,
-                urlencode(sanitized_query, doseq=True),
-                parsed.fragment,
-            )
-        )
+        return sanitize_url(url)
 
     def handle_timeout_exception(
         self,
@@ -108,7 +74,7 @@ class Feed(AsyncBase, ConnectionMixin, CapabilityMixin):
             f"method -> {method},\n "
             f"body -> {sanitized_body},\n"
             f"rest timeout -> {timeout}s,\n"
-            f"e -> {e}"
+            f"e -> {sanitize_text(e)}"
         )
         self.raise_timeout(timeout, self.exchange_name)
 
@@ -131,7 +97,7 @@ class Feed(AsyncBase, ConnectionMixin, CapabilityMixin):
             f"URL -> {sanitized_url}\n"
             f"METHOD -> {method}\n"
             f"BODY -> {sanitized_body}\n"
-            f"ERROR: {exception}"
+            f"ERROR: {sanitize_text(exception)}"
         )
         raise exception
 
@@ -154,7 +120,8 @@ class Feed(AsyncBase, ConnectionMixin, CapabilityMixin):
         sanitized_headers = self._sanitize_for_log(headers)
         sanitized_body = self._sanitize_for_log(body)
         self.logger.warning(
-            f"url -> {sanitized_url},\n headers -> {sanitized_headers},\n body:{sanitized_body},\n e:{e}"
+            f"url -> {sanitized_url},\n headers -> {sanitized_headers},\n "
+            f"body:{sanitized_body},\n e:{sanitize_text(e)}"
         )
         self.raise400(self.exchange_name)
 
@@ -223,8 +190,10 @@ class Feed(AsyncBase, ConnectionMixin, CapabilityMixin):
         """
         if headers is None:
             headers = {}
+        terminal_error: RequestError | None = None
         for attempt in range(max_retries):
-            try: return self._http_client.request(
+            try:
+                return self._http_client.request(
                     method=method,
                     url=url,
                     headers=headers,
@@ -235,13 +204,18 @@ class Feed(AsyncBase, ConnectionMixin, CapabilityMixin):
                 msg = str(e)
                 status_code = getattr(e, "status_code", None)
                 if status_code in (404, 410) or "404" in msg or "410" in msg:
-                    raise RequestError(
+                    terminal_error = RequestError(
                         self.exchange_name,
-                        detail=f"endpoint gone/not found: {url}",
-                    ) from None
+                        detail=(
+                            "endpoint gone/not found: "
+                            f"{self._sanitize_url_for_log(url)}"
+                        ),
+                    )
+                    break
                 if attempt < max_retries - 1:
                     self.logger.warning(
-                        f"Retry {attempt + 1}/{max_retries} for {self._sanitize_url_for_log(url)}: {e}"
+                        f"Retry {attempt + 1}/{max_retries} for "
+                        f"{self._sanitize_url_for_log(url)}: {sanitize_text(e)}"
                     )
                     self._retry_backoff(attempt, e)
                     continue
@@ -253,11 +227,13 @@ class Feed(AsyncBase, ConnectionMixin, CapabilityMixin):
                 if attempt < max_retries - 1:
                     self.logger.warning(
                         f"Retry {attempt + 1}/{max_retries} unexpected error for "
-                        f"{self._sanitize_url_for_log(url)}: {e}"
+                        f"{self._sanitize_url_for_log(url)}: {sanitize_text(e)}"
                     )
                     self._retry_backoff(attempt, e)
                     continue
                 self.handle_request_exception(url, method, body, e)
+        if terminal_error is not None:
+            raise terminal_error from None
 
     def disconnect(self) -> None:
         """disconnect method"""
