@@ -105,7 +105,11 @@ def test_async_aiohttp_failure_logs_and_raises_only_sanitized_data(caplog) -> No
     _assert_secrets_absent(caplog.text)
     _assert_secrets_absent(caught.value)
     _assert_secrets_absent(caught.value.args)
-    _assert_secrets_absent("".join(traceback.format_exception(caught.value)))
+    _assert_secrets_absent(
+        "".join(
+            traceback.format_exception(type(caught.value), caught.value, caught.value.__traceback__)
+        )
+    )
     assert caught.value.__cause__ is None
     assert caught.value.__context__ is None
     assert request_method.call_args.kwargs["allow_redirects"] is False

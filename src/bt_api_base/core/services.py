@@ -151,11 +151,25 @@ class EventService(IEventBus):
         self._processor_task: asyncio.Task[Any] | None = None
         self._running = False
         self._stats: dict[str, int] = defaultdict(int)
-        self._lock = asyncio.Lock()
+        # asyncio.Lock() eagerly resolves an event loop on Python 3.9.  The
+        # synchronous publish API is valid before any event loop exists, so
+        # defer lock creation until start/stop runs inside one.
+        self._lock: asyncio.Lock | None = None
+        self._lock_loop: asyncio.AbstractEventLoop | None = None
+
+    def _get_lock(self) -> asyncio.Lock:
+        """Return the lifecycle lock for the active event loop."""
+        loop = asyncio.get_running_loop()
+        if self._lock is None or self._lock_loop is not loop:
+            if self._running:
+                raise RuntimeError("EventService cannot move to another event loop while running")
+            self._lock = asyncio.Lock()
+            self._lock_loop = loop
+        return self._lock
 
     async def start(self) -> None:
         """Start the event processing loop."""
-        async with self._lock:
+        async with self._get_lock():
             if not self._running:
                 self._event_queue = asyncio.Queue()
                 self._running = True
@@ -164,7 +178,7 @@ class EventService(IEventBus):
 
     async def stop(self) -> None:
         """Stop the event processing loop."""
-        async with self._lock:
+        async with self._get_lock():
             self._running = False
             if self._event_queue:
                 # Signal stop with None
