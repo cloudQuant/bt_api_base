@@ -72,7 +72,9 @@ class TickWriter:
             name="tick-writer-flush",
         )
         self._flush_thread.start()
-        logger.info("TickWriter started: %s/%s -> %s", self.exchange, self.asset_type, self.base_dir)
+        logger.info(
+            "TickWriter started: %s/%s -> %s", self.exchange, self.asset_type, self.base_dir
+        )
 
     def stop(self) -> None:
         self._running = False

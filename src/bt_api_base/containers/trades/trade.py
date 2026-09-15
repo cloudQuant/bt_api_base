@@ -45,7 +45,7 @@ class TradeData(AutoInitMixin):
         self.all_data: dict[str, Any] | None = None
 
     def get_event(self) -> str:
-        """# """
+        """#"""
         return self.event
 
     def init_data(self) -> TradeData:
@@ -76,11 +76,11 @@ class TradeData(AutoInitMixin):
         return self.all_data
 
     def get_exchange_name(self) -> str:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_asset_type(self) -> str | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_symbol_name(self) -> str | None:
@@ -88,11 +88,11 @@ class TradeData(AutoInitMixin):
         raise NotImplementedError
 
     def get_server_time(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_local_update_time(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_trade_id(self) -> str | None:
@@ -112,7 +112,7 @@ class TradeData(AutoInitMixin):
         raise NotImplementedError
 
     def get_trade_side(self) -> str | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_trade_offset(self) -> str | None:
@@ -120,15 +120,15 @@ class TradeData(AutoInitMixin):
         raise NotImplementedError
 
     def get_trade_price(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_trade_volume(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_trade_accumulate_volume(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_trade_type(self) -> str | None:
@@ -136,11 +136,11 @@ class TradeData(AutoInitMixin):
         raise NotImplementedError
 
     def get_trade_time(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_trade_fee(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_trade_fee_symbol(self) -> str | None:

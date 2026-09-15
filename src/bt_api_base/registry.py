@@ -1,5 +1,5 @@
 """
- —  Registry Pattern 
+ —  Registry Pattern
  feed_class / stream_classes / exchange_data_class，
 
 :

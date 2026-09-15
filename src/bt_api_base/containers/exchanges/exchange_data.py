@@ -9,19 +9,20 @@ from bt_api_base._compat import Never
 
 class ExchangeData:
     """Class ExchangeData"""
+
     def __init__(self, config: dict | None = None) -> None:
         """__init__ method"""
-        self.rate_limit_type = ""  # 
-        self.interval = ""  # 
-        self.interval_num = 0  # 
-        self.limit = 0  # 
-        self.server_time = 0.0  # 
-        self.local_update_time = 0.0  # 
-        self.timezone = ""  # 
-        self.rate_limits: list[Any] = []  # 
-        self.exchange_filters: list[Any] = []  # 
-        self.symbols: list[Any] = []  # 
-        self.exchange_name = ""  # 
+        self.rate_limit_type = ""  #
+        self.interval = ""  #
+        self.interval_num = 0  #
+        self.limit = 0  #
+        self.server_time = 0.0  #
+        self.local_update_time = 0.0  #
+        self.timezone = ""  #
+        self.rate_limits: list[Any] = []  #
+        self.exchange_filters: list[Any] = []  #
+        self.symbols: list[Any] = []  #
+        self.exchange_name = ""  #
         self.rest_url = ""
         self.acct_wss_url = ""
         self.wss_url = ""
@@ -31,8 +32,8 @@ class ExchangeData:
         self.wss_paths: dict[str, Any] = {}  # wss paths
         self.kline_periods: dict[str, str] = {}  # kline periods
         self.reverse_kline_periods: dict[str, str] = {}
-        self.status_dict: dict[str, Any] = {}  # 
-        self.legal_currency: list[str] = []  # 
+        self.status_dict: dict[str, Any] = {}  #
+        self.legal_currency: list[str] = []  #
         self.api_key = ""  # API key for authentication
         self.api_secret = ""  # API secret for signing
         self.passphrase = ""  # Passphrase (used by some exchanges)

@@ -28,7 +28,8 @@ def _parse_env_int(name: str, default: int) -> int:
     value = os.environ.get(name)
     if value in (None, ""):
         return default
-    try: return int(value)
+    try:
+        return int(value)
     except ValueError:
         _get_logger().warning(f"Invalid integer env {name}={value!r}, using default {default}")
         return default
@@ -252,7 +253,8 @@ def from_dict_get_float(
         return None
     if isinstance(value, float):
         return value
-    try: return float(value)
+    try:
+        return float(value)
     except (TypeError, ValueError):
         return default
 
@@ -284,7 +286,8 @@ def from_dict_get_int(
         return None
     if isinstance(value, int):
         return value
-    try: return int(value)
+    try:
+        return int(value)
     except (TypeError, ValueError):
         return default
 

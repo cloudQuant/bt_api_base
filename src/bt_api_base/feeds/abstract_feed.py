@@ -1,8 +1,8 @@
-""" (AbstractVenueFeed)  (AsyncWrapperMixin).
+"""(AbstractVenueFeed)  (AsyncWrapperMixin).
 
 ：
 1.  Feed （extra_data + **kwargs ）
-2.  run_in_executor ，HTTP 
+2.  run_in_executor ，HTTP
 3. connect/disconnect  HTTP  no-op
 """
 
@@ -19,8 +19,8 @@ T = TypeVar("T")
 class AbstractVenueFeed(Protocol):
     """.
 
-     Feed（CEX/DEX/CTP/IB/QMT）。
-     Protocol  ABC， Feed 。
+    Feed（CEX/DEX/CTP/IB/QMT）。
+    Protocol  ABC， Feed 。
     """
 
     def connect(self) -> None:
@@ -126,20 +126,18 @@ class AbstractVenueFeed(Protocol):
         """async_cancel_order method"""
         ...
 
-    def async_get_balance(
-        self, symbol: Any = None, extra_data: Any = None, **kwargs: Any
-    ) -> Any:
+    def async_get_balance(self, symbol: Any = None, extra_data: Any = None, **kwargs: Any) -> Any:
         """async_get_balance method"""
         ...
 
     @property
     def capabilities(self) -> set[str]:
-        """ Feed ."""
+        """Feed ."""
         ...
 
 
 class AsyncWrapperMixin:
-    """ HTTP （CTP/IB/QMT）.
+    """HTTP （CTP/IB/QMT）.
 
     HTTP  httpx 。
      HTTP  Mixin，。
@@ -290,7 +288,7 @@ class AsyncWrapperMixin:
 
 
 def check_protocol_compliance(feed_class: type[Any]) -> list[str]:
-    """ feed_class  AbstractVenueFeed .
+    """feed_class  AbstractVenueFeed .
 
     :param feed_class: Feed （）
     :return: ，

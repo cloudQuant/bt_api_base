@@ -122,8 +122,8 @@ class AsyncContextManager:
             async with asyncio.timeout(timeout_seconds):
                 yield
         else:
-                async with _TimeoutContext(timeout_seconds):
-                    yield
+            async with _TimeoutContext(timeout_seconds):
+                yield
 
     @staticmethod
     @asynccontextmanager
@@ -247,7 +247,8 @@ def async_timeout(
     def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            try: return await asyncio.wait_for(func(*args, **kwargs), timeout=timeout_seconds)
+            try:
+                return await asyncio.wait_for(func(*args, **kwargs), timeout=timeout_seconds)
             except asyncio.TimeoutError:
                 raise TimeoutError(f"Operation timed out after {timeout_seconds} seconds") from None
 
@@ -408,10 +409,11 @@ class AsyncQueue:
         """Get item with optional timeout."""
         _validate_timeout(timeout)
         if timeout is not None:
-            try: return await asyncio.wait_for(self._queue.get(), timeout=timeout)
+            try:
+                return await asyncio.wait_for(self._queue.get(), timeout=timeout)
             except asyncio.TimeoutError:
                 raise TimeoutError(f"Failed to get item within {timeout} seconds") from None
-        else: return await self._queue.get()
+        return await self._queue.get()
 
     def qsize(self) -> int:
         """Get queue size."""
@@ -453,7 +455,7 @@ class AsyncTaskGroup:
         tasks_snapshot = set(self._tasks)
         if timeout is not None:
             try:
-                    await asyncio.wait_for(
+                await asyncio.wait_for(
                     asyncio.gather(*tasks_snapshot, return_exceptions=True), timeout=timeout
                 )
             except TimeoutError:

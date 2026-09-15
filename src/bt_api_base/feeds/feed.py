@@ -22,6 +22,7 @@ from bt_api_base.logging_factory import get_logger
 
 class Feed(AsyncBase, ConnectionMixin, CapabilityMixin):
     """Class Feed"""
+
     def __init__(self, data_queue: Any = None, **kwargs: Any) -> None:
         """
         feed initial
@@ -206,10 +207,7 @@ class Feed(AsyncBase, ConnectionMixin, CapabilityMixin):
                 if status_code in (404, 410) or "404" in msg or "410" in msg:
                     terminal_error = RequestError(
                         self.exchange_name,
-                        detail=(
-                            "endpoint gone/not found: "
-                            f"{self._sanitize_url_for_log(url)}"
-                        ),
+                        detail=(f"endpoint gone/not found: {self._sanitize_url_for_log(url)}"),
                     )
                     break
                 if attempt < max_retries - 1:

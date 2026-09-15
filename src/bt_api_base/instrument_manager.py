@@ -1,5 +1,5 @@
 """
-InstrumentManager — 
+InstrumentManager —
 
  Instrument 、、。
 """
@@ -14,7 +14,7 @@ __all__ = ["InstrumentManager", "get_instrument_manager"]
 
 
 class InstrumentManager:
-    """Instrument """
+    """Instrument"""
 
     def __init__(self) -> None:
         """__init__ method"""
@@ -126,7 +126,7 @@ class InstrumentManager:
             self._by_underlying.clear()
 
 
-# 
+#
 _instrument_manager = InstrumentManager()
 
 

@@ -1,4 +1,5 @@
 """Module documentation"""
+
 from __future__ import annotations
 
 import logging
@@ -52,6 +53,7 @@ class _IsolatedRuntimeRegistrar:
 
 class PluginLoader:
     """Class PluginLoader"""
+
     def __init__(self, registry: Any, runtime_registrar: Any) -> None:
         """__init__ method"""
         self.registry = registry

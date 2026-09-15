@@ -11,6 +11,7 @@ from bt_api_base.containers.auto_init_mixin import AutoInitMixin
 
 class OrderStatus(Enum):
     """Class OrderStatus"""
+
     SUBMITTED = "submitted"
     ACCEPTED = "new"
     PARTIAL = "partially_filled"
@@ -57,7 +58,8 @@ class OrderStatus(Enum):
         """from_value method"""
         if status_value is None:
             return cls.REJECTED
-        try: return cls.get_static_dict()[status_value]
+        try:
+            return cls.get_static_dict()[status_value]
         except KeyError as err:
             raise ValueError(f"Invalid order status value: {status_value}") from err
 
@@ -108,7 +110,7 @@ class OrderData(AutoInitMixin):
         self.all_data: dict[str, Any] | None = None
 
     def get_event(self) -> str:
-        """# """
+        """#"""
         return self.event
 
     def init_data(self) -> None | Self:
@@ -159,11 +161,11 @@ class OrderData(AutoInitMixin):
         return self.all_data
 
     def get_exchange_name(self) -> str:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_asset_type(self) -> str | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_symbol_name(self) -> str | None:
@@ -171,11 +173,11 @@ class OrderData(AutoInitMixin):
         raise NotImplementedError
 
     def get_server_time(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_local_update_time(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_trade_id(self) -> str | None:
@@ -187,11 +189,11 @@ class OrderData(AutoInitMixin):
         raise NotImplementedError
 
     def get_cum_quote(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_executed_qty(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_order_id(self) -> str | None:
@@ -199,63 +201,63 @@ class OrderData(AutoInitMixin):
         raise NotImplementedError
 
     def get_order_size(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_order_price(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_reduce_only(self) -> bool | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_order_side(self) -> str | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_order_status(self) -> OrderStatus | str | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_order_symbol_name(self) -> str | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_order_time_in_force(self) -> str | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_order_type(self) -> str | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_order_avg_price(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_origin_order_type(self) -> str | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_position_side(self) -> str | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_trailing_stop_price(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_trailing_stop_trigger_price(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_trailing_stop_callback_rate(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_trailing_stop_trigger_price_type(self) -> str | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_stop_loss_price(self) -> float | None:
@@ -283,7 +285,7 @@ class OrderData(AutoInitMixin):
         raise NotImplementedError
 
     def get_close_position(self) -> bool | None:
-        """# ; """
+        """# ;"""
         raise NotImplementedError
 
     def get_order_offset(self) -> str | None:
@@ -291,7 +293,7 @@ class OrderData(AutoInitMixin):
         return None
 
     def get_order_exchange_id(self) -> str | None:
-        """# ,  'CFFEX', 'SHFE', 'SMART' """
+        """# ,  'CFFEX', 'SHFE', 'SMART'"""
         return None
 
     def __str__(self) -> str:

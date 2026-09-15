@@ -227,7 +227,7 @@ class WebSocketConnection:
                 "args": [{"channel": subscription.topic, "instId": subscription.symbol}],
             }
         else:
-                message = {
+            message = {
                 "action": "unsubscribe",
                 "topic": subscription.topic,
                 "symbol": subscription.symbol,

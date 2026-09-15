@@ -51,7 +51,7 @@ class PositionData(AutoInitMixin):
         raise NotImplementedError
 
     def get_event(self) -> str:
-        """# """
+        """#"""
         return self.event
 
     def get_all_data(self) -> dict[str, Any]:
@@ -89,19 +89,19 @@ class PositionData(AutoInitMixin):
         return self.all_data
 
     def get_exchange_name(self) -> str:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_asset_type(self) -> str | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_server_time(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_local_update_time(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_account_id(self) -> str | None:
@@ -113,35 +113,35 @@ class PositionData(AutoInitMixin):
         raise NotImplementedError
 
     def get_is_isolated(self) -> bool | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_margin_type(self) -> str | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_is_auto_add_margin(self) -> bool | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_leverage(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_max_notional_value(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_position_symbol_name(self) -> str | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_position_volume(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_position_side(self) -> str | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_trade_num(self) -> float | None:
@@ -149,15 +149,15 @@ class PositionData(AutoInitMixin):
         raise NotImplementedError
 
     def get_avg_price(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_mark_price(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_liquidation_price(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_initial_margin(self) -> float | None:
@@ -165,7 +165,7 @@ class PositionData(AutoInitMixin):
         raise NotImplementedError
 
     def get_maintain_margin(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def open_order_initial_margin(self) -> float | None:
@@ -181,15 +181,15 @@ class PositionData(AutoInitMixin):
         raise NotImplementedError
 
     def get_position_realized_pnl(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_position_unrealized_pnl(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def get_position_funding_value(self) -> float | None:
-        """# """
+        """#"""
         raise NotImplementedError
 
     def __str__(self) -> str:

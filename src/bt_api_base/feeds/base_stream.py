@@ -1,6 +1,6 @@
 """
- —  WebSocket / CTP SPI / IB TWS 
-， connect/disconnect/subscribe_topics/_run_loop 
+ —  WebSocket / CTP SPI / IB TWS
+， connect/disconnect/subscribe_topics/_run_loop
 """
 
 from __future__ import annotations
@@ -27,9 +27,9 @@ class BaseDataStream(ABC):
     """
 
     :
-      - connect(): 
-      - disconnect(): 
-      - subscribe_topics(topics): 
+      - connect():
+      - disconnect():
+      - subscribe_topics(topics):
       - _run_loop(): （）
     """
 
@@ -77,7 +77,7 @@ class BaseDataStream(ABC):
 
     @abstractmethod
     def _run_loop(self) -> None:
-        """， daemon """
+        """， daemon"""
         ...
 
     def start(self) -> None:
@@ -104,8 +104,8 @@ class BaseDataStream(ABC):
 
     def wait_connected(self, timeout: float = 30, interval: float = 0.5) -> bool:
         """
-        :param timeout: 
-        :param interval: 
+        :param timeout:
+        :param interval:
         :return: True if connected, False if timeout
         """
         import time

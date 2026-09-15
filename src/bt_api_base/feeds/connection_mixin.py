@@ -1,5 +1,5 @@
 """
- —  Feed 
+ —  Feed
 
 : BaseDataStream  ConnectionState ， Mixin。
  Mixin  Feed（REST ）。
@@ -14,10 +14,10 @@ from enum import Enum, unique
 
 @unique
 class FeedConnectionState(Enum):
-    """Feed 
+    """Feed
 
-     base_stream.py  ConnectionState ，
-     Feed  DataStream 。
+    base_stream.py  ConnectionState ，
+    Feed  DataStream 。
     """
 
     DISCONNECTED = "disconnected"
@@ -28,14 +28,14 @@ class FeedConnectionState(Enum):
 
 
 class ConnectionMixin:
-    """ —  Feed 
+    """—  Feed
 
     HTTP （CEX/CEX DEX）：connect/disconnect  no-op。
      HTTP （CTP/IB/QMT）：。
     """
 
     def __init_connection__(self) -> None:
-        """ —  Feed.__init__ """
+        """—  Feed.__init__"""
         self._conn_state = FeedConnectionState.DISCONNECTED
         self._conn_lock = threading.Lock()
 
@@ -57,11 +57,11 @@ class ConnectionMixin:
             self._conn_state = new_state
 
     def connect(self) -> None:
-        """ — HTTP  no-op，CTP/IB/QMT """
+        """— HTTP  no-op，CTP/IB/QMT"""
         self._set_connection_state(FeedConnectionState.CONNECTED)
 
     def disconnect(self) -> None:
-        """ — HTTP  no-op，CTP/IB/QMT """
+        """— HTTP  no-op，CTP/IB/QMT"""
         self._set_connection_state(FeedConnectionState.DISCONNECTED)
 
     def is_connected(self) -> bool:

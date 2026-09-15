@@ -1,4 +1,5 @@
 """Module-level docstring."""
+
 from __future__ import annotations
 
 import logging
@@ -9,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 class GatewayRuntimeRegistrar:
     """Class GatewayRuntimeRegistrar"""
+
     _adapters: dict[str, type[Any]] = {}
 
     @classmethod

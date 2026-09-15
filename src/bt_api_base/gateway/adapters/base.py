@@ -1,4 +1,5 @@
 """Module-level docstring."""
+
 from __future__ import annotations
 
 import queue
@@ -10,6 +11,7 @@ from bt_api_base.logging_factory import get_logger
 
 class BaseGatewayAdapter(ABC):
     """Class BaseGatewayAdapter"""
+
     def __init__(self, **kwargs: Any) -> None:
         """__init__ method"""
         self.kwargs = dict(kwargs)
@@ -69,7 +71,8 @@ class BaseGatewayAdapter(ABC):
 
     def poll_output(self) -> tuple[str, Any] | None:
         """poll_output method"""
-        try: return self.output_queue.get_nowait()
+        try:
+            return self.output_queue.get_nowait()
         except queue.Empty:
             return None
 

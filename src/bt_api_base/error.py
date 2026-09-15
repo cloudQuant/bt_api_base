@@ -33,6 +33,7 @@ from bt_api_base.exceptions import (
 @unique
 class ErrorCategory(StrEnum):
     """Class ErrorCategory"""
+
     NETWORK = "network"
     AUTH = "auth"
     RATE_LIMIT = "rate_limit"
@@ -53,6 +54,7 @@ class ErrorCategory(StrEnum):
 class UnifiedErrorCode(int, Enum):
     #  (1xxx)
     """Class UnifiedErrorCode"""
+
     NETWORK_TIMEOUT = 1001
     NETWORK_DISCONNECTED = 1002
     DNS_ERROR = 1003
@@ -110,7 +112,7 @@ class UnifiedErrorCode(int, Enum):
     MISSING_PARAMETER = 7002
     PARAMETER_OUT_OF_RANGE = 7003
 
-    #  (8xxx) — 
+    #  (8xxx) —
     API_ERROR = 8001
     ORDER_ERROR = 8002
     TRADE_ERROR = 8003
@@ -122,7 +124,7 @@ class UnifiedErrorCode(int, Enum):
 
 @dataclass
 class UnifiedError(BtApiError):
-    """， BtApiError """
+    """， BtApiError"""
 
     code: UnifiedErrorCode
     category: ErrorCategory
@@ -187,8 +189,8 @@ class UnifiedError(BtApiError):
 class UnifiedRateLimitError(UnifiedError, RateLimitError):
     """
 
-     UnifiedError  exceptions.RateLimitError，
-     ``except RateLimitError`` 。
+    UnifiedError  exceptions.RateLimitError，
+    ``except RateLimitError`` 。
     """
 
     def __init__(
@@ -206,7 +208,7 @@ class UnifiedRateLimitError(UnifiedError, RateLimitError):
             message=message,
             context={"raw_response": response} if response else {},
         )
-        # exceptions.RateLimitError 
+        # exceptions.RateLimitError
         self.exchange_name = venue
         self.retry_after = None
 
@@ -214,8 +216,8 @@ class UnifiedRateLimitError(UnifiedError, RateLimitError):
 class UnifiedAuthError(UnifiedError, AuthenticationError):
     """
 
-     UnifiedError  exceptions.AuthenticationError，
-     ``except AuthenticationError`` 。
+    UnifiedError  exceptions.AuthenticationError，
+    ``except AuthenticationError`` 。
     """
 
     def __init__(
@@ -233,7 +235,7 @@ class UnifiedAuthError(UnifiedError, AuthenticationError):
             message=message,
             context={"raw_response": response} if response else {},
         )
-        # exceptions.AuthenticationError 
+        # exceptions.AuthenticationError
         self.exchange_name = venue
 
 
@@ -260,8 +262,8 @@ class ServerError(UnifiedError):
 class UnifiedRequestFailedError(UnifiedError, RequestFailedError):
     """（）
 
-     UnifiedError  exceptions.RequestFailedError，
-     ``except RequestFailedError`` 。
+    UnifiedError  exceptions.RequestFailedError，
+    ``except RequestFailedError`` 。
     """
 
     def __init__(
@@ -280,7 +282,7 @@ class UnifiedRequestFailedError(UnifiedError, RequestFailedError):
             message=message,
             context={"status": status, "raw_response": response},
         )
-        # exceptions.RequestFailedError 
+        # exceptions.RequestFailedError
         self.exchange_name = venue
         self.status_code = status
 
@@ -294,7 +296,7 @@ class ErrorTranslator:
     # : {: (UnifiedErrorCode, )}
     ERROR_MAP: ClassVar[dict[Any, tuple[UnifiedErrorCode | None, str]]] = {}
 
-    #  HTTP 
+    #  HTTP
     HTTP_STATUS_MAP: ClassVar[dict[int, tuple[UnifiedErrorCode, str]]] = {
         400: (UnifiedErrorCode.INVALID_PARAMETER, "Invalid request parameters"),
         401: (UnifiedErrorCode.INVALID_API_KEY, "Invalid API key"),
@@ -311,14 +313,14 @@ class ErrorTranslator:
         """
 
         :param raw_error:  (code, msg/message, status )
-        :param venue: 
+        :param venue:
         :return: UnifiedError
         """
         code = raw_error.get("code")
         msg = raw_error.get("msg", raw_error.get("message", ""))
         status = raw_error.get("status")
 
-        # 1. 
+        # 1.
         if code is not None and code in cls.ERROR_MAP:
             unified_code, default_msg = cls.ERROR_MAP[code]
             if unified_code is None:
@@ -332,7 +334,7 @@ class ErrorTranslator:
                 context={"raw_response": raw_error},
             )
 
-        # 2.  HTTP 
+        # 2.  HTTP
         if status and status in cls.HTTP_STATUS_MAP:
             unified_code, default_msg = cls.HTTP_STATUS_MAP[status]
             return UnifiedError(
@@ -344,7 +346,7 @@ class ErrorTranslator:
                 context={"raw_response": raw_error},
             )
 
-        # 3. 
+        # 3.
         return UnifiedError(
             code=UnifiedErrorCode.INTERNAL_ERROR,
             category=ErrorCategory.SYSTEM,
@@ -374,7 +376,7 @@ class ErrorTranslator:
 
 
 class OKXErrorTranslator(ErrorTranslator):
-    """OKX API """
+    """OKX API"""
 
     ERROR_MAP = {
         "0": (None, "Success"),
@@ -474,8 +476,20 @@ if TYPE_CHECKING:
     )
     from bt_api_ctp.errors.ctp_translator import CTPErrorTranslator as CTPErrorTranslator
 
+    # These are lazy plugin re-exports at runtime.  Annotations make the
+    # public surface visible to static tools without importing optional
+    # exchange packages while this base module initializes.
+    IBWebErrorTranslator: type[ErrorTranslator]
+    BybitErrorTranslator: type[ErrorTranslator]
+    BitgetErrorTranslator: type[ErrorTranslator]
+    KuCoinErrorTranslator: type[ErrorTranslator]
+    UpbitErrorTranslator: type[ErrorTranslator]
+    GeminiErrorTranslator: type[ErrorTranslator]
+    KrakenErrorTranslator: type[ErrorTranslator]
+    BitfinexErrorTranslator: type[ErrorTranslator]
+
 __all__ = [
-    # 
+    #
     "ErrorCategory",
     "UnifiedErrorCode",
     "UnifiedError",

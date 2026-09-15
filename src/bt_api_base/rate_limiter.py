@@ -31,6 +31,7 @@ __all__ = [
 @unique
 class RateLimitType(StrEnum):
     """Class RateLimitType"""
+
     SLIDING_WINDOW = "sliding_window"
     FIXED_WINDOW = "fixed_window"
     TOKEN_BUCKET = "token_bucket"
@@ -39,6 +40,7 @@ class RateLimitType(StrEnum):
 @unique
 class RateLimitScope(StrEnum):
     """Class RateLimitScope"""
+
     GLOBAL = "global"
     ENDPOINT = "endpoint"
     IP = "ip"
@@ -51,11 +53,11 @@ class RateLimitRule:
     name: str
     type: RateLimitType
     interval: int  # （）
-    limit: int  # 
+    limit: int  #
     scope: RateLimitScope = RateLimitScope.GLOBAL
     endpoint: str | None = None  # （ glob）
     weight_map: dict[str, int] | None = None  # {method_or_key: weight}
-    weight: int = 1  # 
+    weight: int = 1  #
 
     def match(self, method: str, path: str) -> bool:
         """."""
@@ -187,19 +189,19 @@ class RateLimiter:
         ]
         limiter = RateLimiter(rules)
 
-        # 
+        #
         if limiter.acquire("POST", "/api/v3/order"):
-            # 
+            #
             ...
         else:
             limiter.wait_and_acquire("POST", "/api/v3/order")
 
-        # 
+        #
         await limiter.async_acquire("POST", "/api/v3/order")
 
         # （）
         with limiter:
-            # 
+            #
             ...
     """
 

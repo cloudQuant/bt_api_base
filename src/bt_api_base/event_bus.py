@@ -1,6 +1,6 @@
 """
- — /
- Queue （） Callback （ CTP SPI / IB EWrapper  API）
+— /
+Queue （） Callback （ CTP SPI / IB EWrapper  API）
 """
 
 from __future__ import annotations

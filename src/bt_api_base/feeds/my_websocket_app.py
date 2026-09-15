@@ -1,4 +1,5 @@
 """Module documentation"""
+
 from __future__ import annotations
 
 import datetime
@@ -72,12 +73,14 @@ class WebSocketSubscriptionError(RuntimeError):
         self.fatal = True
         super().__init__(sanitize_text(message))
 
+
 # from bt_api_base.containers.exchanges.binance_swap_exchange_data import BinanceExchangeData
 # from bt_api_base.containers.exchanges.okx_swap_exchange_data import OkxSwapExchangeData
 
 
 class MyWebsocketApp:
     """Class MyWebsocketApp"""
+
     def __init__(self, data_queue: Any = None, **kwargs: Any) -> None:
         """__init__ method"""
         self.ws: websocket.WebSocketApp | None = None
@@ -190,9 +193,7 @@ class MyWebsocketApp:
         except Exception:
             if tracked:
                 with self._subscription_lock:
-                    self._pending_subscription_acks = max(
-                        0, self._pending_subscription_acks - 1
-                    )
+                    self._pending_subscription_acks = max(0, self._pending_subscription_acks - 1)
                     self._subscription_batch_send_count = max(
                         0, self._subscription_batch_send_count - 1
                     )
@@ -219,10 +220,7 @@ class MyWebsocketApp:
             if self._pending_subscription_acks <= 0:
                 return
             self._pending_subscription_acks -= 1
-            ready = (
-                self._pending_subscription_acks == 0
-                and not self._tracking_subscription_batch
-            )
+            ready = self._pending_subscription_acks == 0 and not self._tracking_subscription_batch
         if ready:
             self._mark_ready()
 
@@ -240,7 +238,7 @@ class MyWebsocketApp:
             self._emit_event("ws.connected")
 
     def _emit_event(self, event_type, **payload):
-        """ EventBus  WebSocket （）."""
+        """EventBus  WebSocket （）."""
         if self._event_bus is not None:
             params = getattr(self, "_params", None)
             safe_payload = sanitize_value(payload)
@@ -250,16 +248,10 @@ class MyWebsocketApp:
                     **safe_payload,
                     "wss_name": sanitize_text(getattr(self, "wss_name", "unknown")),
                     "wss_url": sanitize_url(getattr(self, "wss_url", None)),
-                    "exchange_name": sanitize_text(
-                        getattr(params, "exchange_name", "unknown")
-                    ),
+                    "exchange_name": sanitize_text(getattr(params, "exchange_name", "unknown")),
                     "asset_type": sanitize_text(getattr(self, "asset_type", "unknown")),
-                    "stream_role": sanitize_text(
-                        getattr(self, "_stream_role", "unknown")
-                    ),
-                    "connection_generation": getattr(
-                        self, "_connection_generation", 0
-                    ),
+                    "stream_role": sanitize_text(getattr(self, "_stream_role", "unknown")),
+                    "connection_generation": getattr(self, "_connection_generation", 0),
                 },
             )
 
@@ -267,9 +259,7 @@ class MyWebsocketApp:
         return sanitize_text(error, sensitive_values=self._credential_values())
 
     def _safe_traceback(self) -> str:
-        return sanitize_text(
-            traceback.format_exc(), sensitive_values=self._credential_values()
-        )
+        return sanitize_text(traceback.format_exc(), sensitive_values=self._credential_values())
 
     def _credential_values(self) -> tuple[Any, ...]:
         values = []
@@ -318,9 +308,7 @@ class MyWebsocketApp:
             self._readiness_generation = self._connection_generation
             self._readiness_ws = _ws
             self._readiness_deadline = (
-                opened_at + self.readiness_timeout
-                if self.readiness_timeout > 0
-                else None
+                opened_at + self.readiness_timeout if self.readiness_timeout > 0 else None
             )
         try:
             ready = self.open_rsp()

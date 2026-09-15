@@ -120,7 +120,9 @@ class OrderIdentityMap:
 
     def orders_for_strategy(self, strategy_id: str) -> list[OrderEntry]:
         with self._lock:
-            return [entry for entry in self._by_request.values() if entry.strategy_id == strategy_id]
+            return [
+                entry for entry in self._by_request.values() if entry.strategy_id == strategy_id
+            ]
 
     @property
     def count(self) -> int:

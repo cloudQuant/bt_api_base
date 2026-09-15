@@ -1,5 +1,5 @@
 """
-bt_api_base 
+bt_api_base
 ， assert / raise Exception / ConnectionError
 """
 
@@ -68,7 +68,7 @@ def is_user_recoverable(error: Exception) -> bool:
 
 
 class BtApiError(Exception):
-    """bt_api_base """
+    """bt_api_base"""
 
     __slots__ = ()
 
@@ -113,7 +113,7 @@ class ExchangeConnectionError(BtApiError):
 
 
 # （， ExchangeConnectionError）
-# ： ConnectionError， Python 
+# ： ConnectionError， Python
 ExchangeConnectionAlias = ExchangeConnectionError
 
 
@@ -124,7 +124,7 @@ class AuthenticationError(ExchangeConnectionError):
 
 
 class RequestTimeoutError(BtApiError):
-    """REST / """
+    """REST /"""
 
     __slots__ = ("exchange_name", "url", "timeout")
 
@@ -156,7 +156,7 @@ class RequestError(BtApiError):
 
 
 class OrderError(BtApiError):
-    """ / """
+    """/"""
 
     __slots__ = ("exchange_name", "symbol")
 
@@ -204,7 +204,7 @@ class DataParseError(BtApiError):
 
 
 class RateLimitError(BtApiError):
-    """API """
+    """API"""
 
     __slots__ = ("exchange_name", "retry_after")
 
@@ -305,7 +305,7 @@ class ConfigurationError(BtApiError):
 
 
 class WebSocketError(BtApiError):
-    """WebSocket """
+    """WebSocket"""
 
     __slots__ = ("exchange_name",)
 

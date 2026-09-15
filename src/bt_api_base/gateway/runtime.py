@@ -59,9 +59,7 @@ class GatewayRuntime:
         self._last_heartbeat = self._started_at
         try:
             self._event_publisher = bridge.ZmqEventPublisher(self.config.event_endpoint)
-            self._market_publisher = bridge.ZmqEventPublisher(
-                self.config.market_endpoint
-            )
+            self._market_publisher = bridge.ZmqEventPublisher(self.config.market_endpoint)
             self._command_server = bridge.ZmqCommandServer(
                 self.config.command_endpoint, self._handle_command
             )
@@ -70,9 +68,7 @@ class GatewayRuntime:
             self.adapter.connect()
             self._adapter_connected = True
             self._state = "running"
-            self._pump_thread = threading.Thread(
-                target=self._pump_adapter_output, daemon=True
-            )
+            self._pump_thread = threading.Thread(target=self._pump_adapter_output, daemon=True)
             self._pump_thread.start()
         except Exception as exc:
             self._record_error("startup", exc)
@@ -117,18 +113,12 @@ class GatewayRuntime:
                 payload = self.adapter.get_balance() if self.adapter is not None else {}
                 return self._ack(command, bridge, True, "ok", payload=payload)
             if command_type == "list_positions":
-                positions = (
-                    self.adapter.get_positions() if self.adapter is not None else []
-                )
-                return self._ack(
-                    command, bridge, True, "ok", payload={"positions": positions}
-                )
+                positions = self.adapter.get_positions() if self.adapter is not None else []
+                return self._ack(command, bridge, True, "ok", payload={"positions": positions})
             if command_type == "list_orders":
                 getter = getattr(self.adapter, "get_open_orders", None)
                 orders = getter() if callable(getter) else []
-                return self._ack(
-                    command, bridge, True, "ok", payload={"orders": orders}
-                )
+                return self._ack(command, bridge, True, "ok", payload={"orders": orders})
             if command_type == "place_order":
                 payload = self._payload_from_order_command(command)
                 write_dispatched = True
@@ -259,9 +249,7 @@ class GatewayRuntime:
             idempotency_key=str(getattr(command, "idempotency_key", "") or "unknown"),
             accepted=accepted,
             status=status,
-            account_id=str(
-                getattr(command, "account_id", self.config.account_id) or ""
-            ),
+            account_id=str(getattr(command, "account_id", self.config.account_id) or ""),
             strategy_id=str(getattr(command, "strategy_id", "") or ""),
             order_id=order_id or None,
             reason=reason,
@@ -359,9 +347,7 @@ class GatewayRuntimeHealth:
             "uptime_sec": int(now - runtime._started_at) if runtime._started_at else 0,
             "last_heartbeat": int(runtime._last_heartbeat or now),
             "heartbeat_age_sec": int(max(now - (runtime._last_heartbeat or now), 0)),
-            "last_tick_time": (
-                int(runtime._last_tick_time) if runtime._last_tick_time else None
-            ),
+            "last_tick_time": (int(runtime._last_tick_time) if runtime._last_tick_time else None),
             "last_order_time": (
                 int(runtime._last_order_time) if runtime._last_order_time else None
             ),
@@ -402,9 +388,7 @@ def _load_forwarding_bridge() -> _ForwardingBridge:
         try:
             _BRIDGE = _ForwardingBridge()
         except ImportError as exc:
-            raise RuntimeError(
-                "bt_api_py.forwarding is required for GatewayRuntime"
-            ) from exc
+            raise RuntimeError("bt_api_py.forwarding is required for GatewayRuntime") from exc
     return _BRIDGE
 
 
@@ -462,12 +446,8 @@ def _to_market_event(payload: Any, bridge: Any, config: GatewayConfig) -> Any:
     )
     return bridge.MarketEvent(
         event_type=str(data.get("event_type") or data.get("kind") or "tick"),
-        exchange=str(
-            data.get("exchange") or data.get("exchange_id") or config.exchange_type
-        ),
-        market_type=str(
-            data.get("market_type") or data.get("asset_type") or config.asset_type
-        ),
+        exchange=str(data.get("exchange") or data.get("exchange_id") or config.exchange_type),
+        market_type=str(data.get("market_type") or data.get("asset_type") or config.asset_type),
         symbol=symbol,
         payload=data,
         source="gateway",
@@ -485,9 +465,7 @@ def _to_private_event(payload: Any, bridge: Any, config: GatewayConfig) -> Any:
         strategy_id=str(data.get("strategy_id") or ""),
         client_order_id=str(data.get("client_order_id") or ""),
         order_ref=str(data.get("order_ref") or ""),
-        external_order_id=str(
-            data.get("external_order_id") or data.get("order_id") or ""
-        ),
+        external_order_id=str(data.get("external_order_id") or data.get("order_id") or ""),
         order_sys_id=str(data.get("order_sys_id") or ""),
         trade_id=str(data.get("trade_id") or ""),
         id_source=str(data.get("id_source") or ""),

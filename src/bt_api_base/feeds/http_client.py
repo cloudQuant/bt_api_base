@@ -32,7 +32,7 @@ logger = get_logger("http_client")
 
 
 class HttpClient:
-    """ HTTP """
+    """HTTP"""
 
     def __init__(
         self,
@@ -138,19 +138,13 @@ class HttpClient:
             response = self._sync_client.request(method, url, **req_kwargs)
         except httpx.TimeoutException as e:
             message = sanitize_text(str(e), sensitive_values=sensitive_mapping_values(headers))
-            failure = RequestFailedError(
-                venue=self._venue, message=f"Request timeout: {message}"
-            )
+            failure = RequestFailedError(venue=self._venue, message=f"Request timeout: {message}")
         except httpx.ConnectError as e:
             message = sanitize_text(str(e), sensitive_values=sensitive_mapping_values(headers))
-            failure = RequestFailedError(
-                venue=self._venue, message=f"Connection error: {message}"
-            )
+            failure = RequestFailedError(venue=self._venue, message=f"Connection error: {message}")
         except httpx.RequestError as e:
             message = sanitize_text(str(e), sensitive_values=sensitive_mapping_values(headers))
-            failure = RequestFailedError(
-                venue=self._venue, message=f"HTTP client error: {message}"
-            )
+            failure = RequestFailedError(venue=self._venue, message=f"HTTP client error: {message}")
 
         if failure is not None:
             raise failure

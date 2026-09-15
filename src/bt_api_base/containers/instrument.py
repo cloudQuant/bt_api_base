@@ -1,5 +1,5 @@
 """
- Instrument 
+ Instrument
 
 （、、、、、），
  ↔ 。
@@ -40,12 +40,12 @@ class Instrument:
     internal: str  # ， BTC-USDT, IF2506, AAPL
     venue: str  # BINANCE___SWAP, CTP___FUTURE, IB___STK
     venue_symbol: str  # /， BTCUSDT, IF2506, AAPL
-    asset_type: AssetType  # 
+    asset_type: AssetType  #
 
     # ===  ===
     underlying: str | None = None  # ：BTC、300、Apple
     base_currency: str | None = None  # （/）
-    quote_currency: str | None = None  # 
+    quote_currency: str | None = None  #
 
     # === （FUTURE/OPTION） ===
     expiry: datetime | None = None
@@ -114,7 +114,7 @@ KNOWN_QUOTES = [
 
 
 class InstrumentFactory:
-    """Instrument """
+    """Instrument"""
 
     @staticmethod
     def from_venue(

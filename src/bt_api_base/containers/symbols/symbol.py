@@ -9,6 +9,7 @@ from bt_api_base.containers.auto_init_mixin import AutoInitMixin
 
 class SymbolData(AutoInitMixin):
     """Class SymbolData"""
+
     def __init__(self, symbol_info: Any, has_been_json_encoded: bool) -> None:
         """__init__ method"""
         self.event = "SymbolEvent"

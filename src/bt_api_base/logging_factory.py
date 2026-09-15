@@ -81,9 +81,7 @@ class _LoggerProxy:
             # reported. Keep the template if a caller supplied invalid args.
             return message
 
-    def _emit(
-        self, method_name: str, fallback_name: str | None, args: tuple[Any, ...]
-    ) -> None:
+    def _emit(self, method_name: str, fallback_name: str | None, args: tuple[Any, ...]) -> None:
         try:
             method = getattr(self._logger, method_name, None)
             if method is None and fallback_name is not None:
@@ -139,9 +137,7 @@ def _resolve_log_file_name(file_name: str) -> str:
 
 def _build_custom_log_file_name(module: str) -> str:
     """Build a safe log file name for custom module keys."""
-    sanitized = "".join(
-        ch if ch.isalnum() or ch in {"_", "-", "."} else "_" for ch in module
-    )
+    sanitized = "".join(ch if ch.isalnum() or ch in {"_", "-", "."} else "_" for ch in module)
     sanitized = sanitized.strip("._") or "bt_api"
     return f"{sanitized}.log"
 

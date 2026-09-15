@@ -21,10 +21,10 @@ __all__ = ["AutoInitMixin"]
 
 
 class AutoInitMixin:
-    """ mixin， init_data() 
+    """mixin， init_data()
 
-     __getattribute__  get_* ， init_data()。
-     init_data() ，。
+    __getattribute__  get_* ， init_data()。
+    init_data() ，。
     """
 
     def _ensure_init(self) -> AutoInitMixin:

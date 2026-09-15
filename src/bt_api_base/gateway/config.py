@@ -72,7 +72,7 @@ class GatewayConfig:
         self.market_endpoint = endpoints["market_endpoint"]
 
     @classmethod
-    def from_kwargs(cls, **kwargs: Any) -> "GatewayConfig":
+    def from_kwargs(cls, **kwargs: Any) -> GatewayConfig:
         """Build a config object from launch-builder keyword arguments."""
         exchange_type = str(kwargs.get("exchange_type") or "CTP").strip().upper()
         asset_type = str(kwargs.get("asset_type") or "FUTURE").strip().upper()
@@ -272,9 +272,7 @@ def _runtime_name(value: Any, exchange_type: str, asset_type: str, account_id: s
     return f"{exchange}-{asset}-{account}"
 
 
-def _resolve_endpoints(
-    runtime_name: str, transport: str, kwargs: dict[str, Any]
-) -> dict[str, str]:
+def _resolve_endpoints(runtime_name: str, transport: str, kwargs: dict[str, Any]) -> dict[str, str]:
     command = kwargs.get("command_endpoint") or kwargs.get("gateway_command_endpoint") or ""
     event = kwargs.get("event_endpoint") or kwargs.get("gateway_event_endpoint") or ""
     market = kwargs.get("market_endpoint") or kwargs.get("gateway_market_endpoint") or ""

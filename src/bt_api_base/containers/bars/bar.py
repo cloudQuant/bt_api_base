@@ -5,6 +5,7 @@
 # """
 
 """Module-level docstring."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -14,6 +15,7 @@ from bt_api_base.containers.auto_init_mixin import AutoInitMixin
 
 class BarData(AutoInitMixin):
     """Class BarData"""
+
     def __init__(self, bar_info: Any, has_been_json_encoded: bool = False) -> None:
         """__init__ method"""
         self.event = "BarEvent"

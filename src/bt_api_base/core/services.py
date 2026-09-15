@@ -612,4 +612,5 @@ class AccountService:
 
             return balance_data
 
-        finally: await self.connection_manager.release_connection(exchange_name, connection)
+        finally:
+            await self.connection_manager.release_connection(exchange_name, connection)

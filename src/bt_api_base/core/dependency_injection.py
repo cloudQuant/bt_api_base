@@ -118,7 +118,8 @@ class DIContainer:
                     # Use default value if available
                     if param.default != inspect.Parameter.empty:
                         kwargs[param_name] = param.default
-                    else: raise ValueError(
+                    else:
+                        raise ValueError(
                             f"Unable to resolve required dependency '{param_name}' "
                             f"for {implementation.__name__}"
                         ) from exc
@@ -210,7 +211,8 @@ def inject_method(func: Callable[P, T]) -> Callable[P, T]:
                 except ValueError as exc:
                     if param.default != inspect.Parameter.empty:
                         kwargs[param_name] = param.default
-                    else: raise ValueError(
+                    else:
+                        raise ValueError(
                             f"Unable to resolve required dependency '{param_name}' "
                             f"for {func.__name__}"
                         ) from exc

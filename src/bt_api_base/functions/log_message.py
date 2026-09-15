@@ -1,4 +1,4 @@
-""" —  spdlog  logging """
+"""—  spdlog  logging"""
 
 from __future__ import annotations
 
@@ -24,8 +24,8 @@ except Exception as e:  # DLL load failure, segfault guard
 
 
 def _get_project_logs_dir() -> str:
-    """ logs/ 。
-     = bt_api_base 。
+    """logs/ 。
+    = bt_api_base 。
     """
     try:
         import bt_api_base
@@ -40,6 +40,7 @@ def _get_project_logs_dir() -> str:
 
 class SpdLogManager:
     """Class SpdLogManager"""
+
     _logger_cache: dict[tuple[str, str, int, int, bool], object] = {}
     _project_logs_dir = _get_project_logs_dir()
 
@@ -51,7 +52,7 @@ class SpdLogManager:
         rotation_minute: int = 0,
         print_info: bool = False,
     ) -> None:
-        #  logs/ 
+        #  logs/
         """__init__ method"""
         self.file_name = self._normalize_file_name(file_name)
         self.logger_name = logger_name
@@ -75,7 +76,7 @@ class SpdLogManager:
         return str(Path(cls._project_logs_dir) / name)
 
     def create_logger(self) -> Any:
-        # 
+        #
         """create_logger method"""
         key = (
             self.file_name,
@@ -88,7 +89,7 @@ class SpdLogManager:
         if key in SpdLogManager._logger_cache:
             return SpdLogManager._logger_cache[key]
 
-        # 
+        #
         log_dir = Path(self.file_name).parent
         if str(log_dir):
             log_dir.mkdir(parents=True, exist_ok=True)
@@ -117,7 +118,7 @@ class SpdLogManager:
                 spdlog.daily_file_sink_st(self.file_name, self.rotation_hour, self.rotation_minute),  # type: ignore[union-attr]
             ]
         else:
-                sinks = [
+            sinks = [
                 spdlog.daily_file_sink_st(self.file_name, self.rotation_hour, self.rotation_minute)  # type: ignore[union-attr]
             ]
 

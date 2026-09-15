@@ -1,6 +1,6 @@
-""" — 。
+"""— 。
 
- API Key，CTP  Broker/User/Password，IB  TWS .
+API Key，CTP  Broker/User/Password，IB  TWS .
 """
 
 from __future__ import annotations

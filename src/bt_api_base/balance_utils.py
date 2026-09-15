@@ -1,6 +1,6 @@
 """
 
- balance_handler 
+balance_handler
 """
 
 from __future__ import annotations

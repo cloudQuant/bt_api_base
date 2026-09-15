@@ -1,5 +1,5 @@
 """
-Capability  — 
+Capability  —
 
  Feed  capabilities() 。
  require_capability() ， NotSupportedError。
@@ -14,7 +14,7 @@ from bt_api_base._compat import StrEnum
 
 @unique
 class Capability(StrEnum):
-    """ — """
+    """—"""
 
     # ──  ──
     GET_TICK = "get_tick"
@@ -73,7 +73,7 @@ class NotSupportedError(Exception):
 
 
 class CapabilityMixin:
-    """Capability 
+    """Capability
 
      _capabilities() 。
 
@@ -97,7 +97,7 @@ class CapabilityMixin:
 
     @property
     def capabilities(self) -> set[Capability]:
-        """ Feed """
+        """Feed"""
         return self._capabilities()
 
     def has_capability(self, cap: Capability) -> bool:
