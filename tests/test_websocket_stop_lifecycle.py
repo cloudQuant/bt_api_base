@@ -34,7 +34,7 @@ def test_stop_interrupts_reconnect_backoff_without_another_connection():
     backing_off = threading.Event()
     socket = SimpleNamespace(run_forever=Mock(), close=Mock())
     app._create_websocket_app = lambda: socket
-    app._backoff_delay = lambda: (backing_off.set() or 60.0)
+    app._backoff_delay = lambda: backing_off.set() or 60.0
     app.process = threading.Thread(target=app.run, daemon=True)
     app.process.start()
     assert backing_off.wait(1.0)
@@ -344,26 +344,38 @@ def test_readiness_watchdog_closes_only_the_generation_that_misses_its_ack():
     assert payload["connection_generation"] == 2
 
 
-def test_new_generation_replaces_old_readiness_deadline_without_stale_close():
+def test_new_generation_replaces_old_readiness_deadline_without_stale_close(monkeypatch):
     app = _app(readiness_timeout=0.12)
     old_socket = SimpleNamespace(close=Mock())
     app.ws = old_socket
     app.open_rsp = Mock(return_value=False)
+    clock = {"now": 0.0}
+    monkeypatch.setattr("bt_api_base.feeds.my_websocket_app.time.monotonic", lambda: clock["now"])
     app.on_open(old_socket)
-    worker = threading.Thread(target=app._readiness_watchdog, daemon=True)
-    worker.start()
 
-    time.sleep(0.07)
     new_socket = SimpleNamespace(close=Mock())
-    app.ws = new_socket
-    app.on_open(new_socket)
-    time.sleep(0.07)
+
+    class _StopAfterOneCheck:
+        def __init__(self):
+            self.calls = 0
+
+        def wait(self, _interval):
+            self.calls += 1
+            if self.calls == 1:
+                clock["now"] = 0.07
+                app.ws = new_socket
+                app.on_open(new_socket)
+                clock["now"] = 0.13
+                return False
+            return True
+
+    app._stop_event = _StopAfterOneCheck()
+    app._readiness_watchdog()
 
     old_socket.close.assert_not_called()
     new_socket.close.assert_not_called()
-    app._mark_ready()
-    app._stop_event.set()
-    worker.join(1.0)
+    assert app._readiness_generation == 2
+    assert app._readiness_deadline == 0.19
 
 
 def test_on_ping_does_not_send_a_second_pong():

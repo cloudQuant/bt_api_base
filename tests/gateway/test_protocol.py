@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from bt_api_base.gateway.models import GatewayTick
 
@@ -17,8 +17,8 @@ class TestProtocol:
         assert protocol is not None
 
     def test_quote_v2_tick_round_trip_retains_execution_evidence(self):
-        event_time = datetime(2026, 9, 9, 1, 30, 1, tzinfo=UTC)
-        receive_time = datetime(2026, 9, 9, 1, 30, 2, tzinfo=UTC)
+        event_time = datetime(2026, 9, 9, 1, 30, 1, tzinfo=timezone.utc)
+        receive_time = datetime(2026, 9, 9, 1, 30, 2, tzinfo=timezone.utc)
         tick = GatewayTick(
             timestamp=event_time.timestamp(),
             symbol="SA701C1080",
