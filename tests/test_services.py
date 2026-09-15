@@ -100,7 +100,13 @@ class TestEventService:
         received: list[dict[str, str]] = []
 
         service._running = True
-        service._event_queue = asyncio.Queue()
+        loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(loop)
+            service._event_queue = asyncio.Queue()
+        finally:
+            asyncio.set_event_loop(None)
+            loop.close()
         service.subscribe("test_topic", lambda event: received.append(event))
 
         with patch("bt_api_base.core.services.asyncio.get_running_loop", side_effect=RuntimeError):
@@ -111,6 +117,7 @@ class TestEventService:
 
 class TestConnectionService:
     """Class TestConnectionService"""
+
     @pytest.mark.asyncio
     async def test_close_all_resets_active_connection_stats(self):
         """test_close_all_resets_active_connection_stats method"""
@@ -235,6 +242,7 @@ class _StubEventBus:
 
 class TestDomainServices:
     """Class TestDomainServices"""
+
     @pytest.mark.asyncio
     async def test_market_data_service_uses_cache_before_connection(self):
         """test_market_data_service_uses_cache_before_connection method"""
