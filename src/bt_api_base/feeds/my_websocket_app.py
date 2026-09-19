@@ -342,7 +342,6 @@ class MyWebsocketApp:
 
     def open_rsp(self):
         """open_rsp method"""
-        pass
 
     def on_message(self, _ws, message):
         """on_message method"""

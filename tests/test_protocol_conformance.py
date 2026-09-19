@@ -18,11 +18,9 @@ class _CompleteFeed(AsyncWrapperMixin):
 
     def connect(self) -> None:
         """connect method"""
-        pass
 
     def disconnect(self) -> None:
         """disconnect method"""
-        pass
 
     def is_connected(self) -> bool:
         """is_connected method"""
@@ -94,11 +92,9 @@ class _IncompleteFeed:
 
     def connect(self) -> None:
         """connect method"""
-        pass
 
     def disconnect(self) -> None:
         """disconnect method"""
-        pass
 
     def is_connected(self) -> bool:
         """is_connected method"""
@@ -110,11 +106,9 @@ class _MinimalFeed(AsyncWrapperMixin):
 
     def connect(self) -> None:
         """connect method"""
-        pass
 
     def disconnect(self) -> None:
         """disconnect method"""
-        pass
 
     def is_connected(self) -> bool:
         """is_connected method"""
@@ -207,11 +201,9 @@ class TestProtocolConformance:
             """Class NoCapabilitiesFeed"""
             def connect(self):
                 """connect method"""
-                pass
 
             def disconnect(self):
                 """disconnect method"""
-                pass
 
             def is_connected(self):
                 """is_connected method"""
@@ -219,15 +211,12 @@ class TestProtocolConformance:
 
             def get_tick(self, symbol, extra_data=None, **kwargs):
                 """get_tick method"""
-                pass
 
             def get_depth(self, symbol, count=20, extra_data=None, **kwargs):
                 """get_depth method"""
-                pass
 
             def get_kline(self, symbol, period, count=20, extra_data=None, **kwargs):
                 """get_kline method"""
-                pass
 
             def make_order(
                 self,
@@ -242,35 +231,27 @@ class TestProtocolConformance:
                 **kwargs,
             ):
                 """make_order method"""
-                pass
 
             def cancel_order(self, symbol, order_id, extra_data=None, **kwargs):
                 """cancel_order method"""
-                pass
 
             def cancel_all(self, symbol=None, extra_data=None, **kwargs):
                 """cancel_all method"""
-                pass
 
             def query_order(self, symbol, order_id, extra_data=None, **kwargs):
                 """query_order method"""
-                pass
 
             def get_open_orders(self, symbol=None, extra_data=None, **kwargs):
                 """get_open_orders method"""
-                pass
 
             def get_balance(self, symbol=None, extra_data=None, **kwargs):
                 """get_balance method"""
-                pass
 
             def get_account(self, symbol="ALL", extra_data=None, **kwargs):
                 """get_account method"""
-                pass
 
             def get_position(self, symbol=None, extra_data=None, **kwargs):
                 """get_position method"""
-                pass
 
         missing = check_protocol_compliance(NoCapabilitiesFeed)
         assert "capabilities" not in missing

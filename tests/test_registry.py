@@ -139,13 +139,13 @@ class TestRegistryGlobal:
     """Test that ExchangeRegistry.method() class-level calls work via metaclass delegation."""
 
     def setup_method(self):
-        # 
+        #
         """setup_method method"""
         self._saved = ExchangeRegistry._default
         ExchangeRegistry._default = None
 
     def teardown_method(self):
-        # 
+        #
         """teardown_method method"""
         ExchangeRegistry._default = self._saved
 

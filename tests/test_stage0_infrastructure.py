@@ -1,10 +1,10 @@
 """
-Stage 0 
+Stage 0
 
 :
 - AbstractVenueFeed Protocol  check_protocol_compliance
 - AsyncWrapperMixin
-- Capability 
+- Capability
 - ConnectionMixin
 - Instrument  InstrumentFactory
 - InstrumentManager
@@ -30,7 +30,7 @@ class TestAbstractVenueFeed:
         """test_protocol_is_runtime_checkable method"""
         from bt_api_base.feeds.abstract_feed import AbstractVenueFeed
 
-        # Protocol  isinstance 
+        # Protocol  isinstance
         assert hasattr(AbstractVenueFeed, "__protocol_attrs__") or True  # runtime_checkable
 
     def test_check_protocol_compliance_on_feed(self):
@@ -39,7 +39,7 @@ class TestAbstractVenueFeed:
         from bt_api_base.feeds.feed import Feed
 
         missing = check_protocol_compliance(Feed)
-        # Feed 
+        # Feed
         assert "connect" not in missing
         assert "disconnect" not in missing
         assert "is_connected" not in missing
@@ -57,7 +57,6 @@ class TestAbstractVenueFeed:
             """Class IncompleteClass"""
             def get_tick(self, symbol, extra_data=None, **kwargs):
                 """get_tick method"""
-                pass
 
         missing = check_protocol_compliance(IncompleteClass)
         assert "connect" in missing
@@ -119,7 +118,7 @@ class TestCapability:
         """test_capability_enum_completeness method"""
         from bt_api_base.feeds.capability import Capability
 
-        # 
+        #
         assert Capability.MAKE_ORDER.value == "make_order"
         assert Capability.GET_TICK.value == "get_tick"
         assert Capability.GET_BALANCE.value == "get_balance"
@@ -143,7 +142,7 @@ class TestCapability:
         assert feed.has_capability(Capability.MAKE_ORDER)
         assert not feed.has_capability(Capability.HEDGE_MODE)
 
-        # require 
+        # require
         with pytest.raises(NotSupportedError) as exc_info:
             feed.require_capability(Capability.HEDGE_MODE)
         assert "hedge_mode" in str(exc_info.value)
@@ -247,7 +246,7 @@ class TestInstrument:
         )
         new_inst = inst.with_params(status="suspend")
         assert new_inst.status == "suspend"
-        assert inst.status == "active"  # 
+        assert inst.status == "active"  #
 
 
 class TestInstrumentFactory:
@@ -602,11 +601,11 @@ class TestRateLimiter:
             ),
         ]
         limiter = RateLimiter(rules)
-        # 
+        #
         assert limiter.acquire("POST", "/api/v3/order")
         assert limiter.acquire("POST", "/api/v3/order")
         assert not limiter.acquire("POST", "/api/v3/order")
-        # 
+        #
         assert limiter.acquire("GET", "/api/v3/ticker")
 
     def test_weight_map(self):
@@ -674,7 +673,7 @@ class TestConfigLoader:
                 display_name="Test",
                 venue_type=VenueType.CEX,
                 connection=ConnectionConfig(type=ConnectionType.HTTP),
-                base_urls=None,  # CEX 
+                base_urls=None,  # CEX
             )
 
     def test_broker_can_have_base_urls(self):
@@ -779,7 +778,7 @@ class TestFeedProtocolCompliance:
         from bt_api_base.feeds.feed import Feed
 
         missing = check_protocol_compliance(Feed)
-        # 
+        #
         core = {
             "connect",
             "disconnect",

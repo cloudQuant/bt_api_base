@@ -298,4 +298,5 @@ class TestPooledConnectionSync:
             avail, in_use = pool.size()
             assert in_use == 0
             assert avail >= 1
-        finally: pool.stop()
+        finally:
+            pool.stop()
