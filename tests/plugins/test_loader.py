@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from bt_api_base.gateway.registrar import GatewayRuntimeRegistrar
+from bt_api_base.plugins import loader as loader_module
 from bt_api_base.plugins.errors import PluginOptionalDependencyError
 from bt_api_base.plugins.loader import PluginLoader
 from bt_api_base.plugins.protocol import PluginInfo
@@ -31,6 +32,8 @@ class _FakeEntryPoint:
     name: str
     module: str
     loader: Any
+    group: str = "bt_api.plugins"
+    value: str = ""
 
     def load(self) -> Any:
         """load method"""
@@ -182,6 +185,27 @@ def test_plugin_loader_handles_no_plugins(monkeypatch, caplog):
 
     assert loader.loaded == {}
     assert "discovered 0 entry points" in caplog.text
+
+
+def test_plugin_loader_falls_back_when_aggregate_metadata_is_malformed(monkeypatch):
+    entry_point = _FakeEntryPoint(
+        "demo", "demo.plugin", lambda: None, value="demo.plugin:register_plugin"
+    )
+    duplicate_entry_point = _FakeEntryPoint(
+        "legacy-demo", "demo.plugin", lambda: None, value="demo.plugin:register_plugin"
+    )
+
+    class _Distribution:
+        entry_points = [entry_point, duplicate_entry_point]
+
+    def raise_malformed_metadata() -> None:
+        raise TypeError("expected string or bytes-like object, got 'NoneType'")
+
+    loader = PluginLoader(ExchangeRegistry, GatewayRuntimeRegistrar)
+    monkeypatch.setattr(loader_module.importlib_metadata, "entry_points", raise_malformed_metadata)
+    monkeypatch.setattr(loader_module.importlib_metadata, "distributions", lambda: [_Distribution()])
+
+    assert loader._discover_entry_points("bt_api.plugins") == [entry_point]
 
 
 def test_plugin_loader_records_unexpected_registration_error(monkeypatch):

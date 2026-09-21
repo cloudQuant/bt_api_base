@@ -85,12 +85,46 @@ class PluginLoader:
             self._load_one(entry_point)
 
     def _discover_entry_points(self, group: str) -> list[Any]:
-        discovered: Any = importlib_metadata.entry_points()
+        try:
+            discovered: Any = importlib_metadata.entry_points()
+        except Exception as exc:
+            # A malformed, unrelated installed distribution can make the stdlib
+            # aggregate entry-point index fail before it reaches this group.  Scan
+            # distributions independently so valid exchange plugins remain usable.
+            logger.warning(
+                "%s aggregate entry-point discovery failed (%s); scanning distributions",
+                LOG_PREFIX,
+                type(exc).__name__,
+            )
+            return self._discover_entry_points_from_distributions(group)
         if hasattr(discovered, "select"):
             return list(discovered.select(group=group))
         if isinstance(discovered, dict):
             return list(discovered.get(group, ()))
         return [ep for ep in discovered if getattr(ep, "group", None) == group]
+
+    @staticmethod
+    def _discover_entry_points_from_distributions(group: str) -> list[Any]:
+        entry_points: list[Any] = []
+        seen: set[tuple[str, str]] = set()
+        for distribution in importlib_metadata.distributions():
+            try:
+                for entry_point in distribution.entry_points:
+                    if getattr(entry_point, "group", None) != group:
+                        continue
+                    value = str(getattr(entry_point, "value", ""))
+                    identity = (value,) if value else (str(getattr(entry_point, "name", "")),)
+                    if identity in seen:
+                        continue
+                    seen.add(identity)
+                    entry_points.append(entry_point)
+            except Exception as exc:
+                logger.warning(
+                    "%s skipped malformed distribution entry points (%s)",
+                    LOG_PREFIX,
+                    type(exc).__name__,
+                )
+        return entry_points
 
     def _load_one(self, entry_point: Any) -> None:
         entry_name = str(getattr(entry_point, "name", "<unknown>"))
