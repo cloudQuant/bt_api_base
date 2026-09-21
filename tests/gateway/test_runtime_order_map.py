@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from bt_api_base.gateway.adapters.base import BaseGatewayAdapter
 from bt_api_base.gateway.config import GatewayConfig
 from bt_api_base.gateway.protocol import CHANNEL_EVENT, dumps_message, loads_message
@@ -10,6 +12,11 @@ from bt_api_base.gateway.runtime_remote import GatewayRuntime
 
 
 class _OrderMapAdapter(BaseGatewayAdapter):
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.place_count = 0
+        self.cancel_count = 0
+
     def connect(self) -> None:
         return None
 
@@ -26,6 +33,7 @@ class _OrderMapAdapter(BaseGatewayAdapter):
         return []
 
     def place_order(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.place_count += 1
         self.last_payload = dict(payload)
         return {
             "order_id": "venue-1",
@@ -38,6 +46,7 @@ class _OrderMapAdapter(BaseGatewayAdapter):
         }
 
     def cancel_order(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.cancel_count += 1
         return {}
 
 
@@ -87,6 +96,7 @@ def test_place_order_records_adapter_client_and_venue_order_ids(tmp_path):
         asset_type="SPOT",
         account_id="acct-1",
         base_dir=str(tmp_path),
+        enable_trading=True,
     )
     runtime = GatewayRuntime(config)
     runtime._adapter_connected = True
@@ -114,6 +124,7 @@ def test_place_order_promotes_bt_order_ref_and_records_raw_exchange_aliases(tmp_
         asset_type="SWAP",
         account_id="acct-1",
         base_dir=str(tmp_path),
+        enable_trading=True,
     )
     runtime = GatewayRuntime(config)
     runtime._adapter_connected = True
@@ -167,6 +178,7 @@ def test_handle_commands_uses_command_request_id_for_order_map(tmp_path):
         asset_type="SPOT",
         account_id="acct-1",
         base_dir=str(tmp_path),
+        enable_trading=True,
     )
     runtime = GatewayRuntime(config)
     runtime._adapter_connected = True
@@ -181,6 +193,32 @@ def test_handle_commands_uses_command_request_id_for_order_map(tmp_path):
     assert response["status"] == "ok"
     assert runtime.adapter.last_payload["request_id"] == "cmd-1"
     assert runtime.order_map.strategy_for_request("cmd-1") == "strategy-1"
+
+
+def test_runtime_rejects_write_commands_when_trading_is_disabled(tmp_path):
+    GatewayRuntime.register_adapter("UNITTEST_ORDERMAP", _OrderMapAdapter)
+    config = GatewayConfig(
+        exchange_type="UNITTEST_ORDERMAP",
+        asset_type="SPOT",
+        account_id="acct-1",
+        base_dir=str(tmp_path),
+    )
+    runtime = GatewayRuntime(config)
+    runtime._adapter_connected = True
+
+    with pytest.raises(PermissionError, match="gateway trading is disabled"):
+        runtime._dispatch(
+            "place_order",
+            {"request_id": "blocked-place", "symbol": "BTCUSDT", "side": "BUY"},
+        )
+    with pytest.raises(PermissionError, match="gateway trading is disabled"):
+        runtime._dispatch(
+            "cancel_order",
+            {"request_id": "blocked-cancel", "order_id": "venue-1"},
+        )
+
+    assert runtime.adapter.place_count == 0
+    assert runtime.adapter.cancel_count == 0
 
 
 def test_event_payload_is_enriched_from_order_map(tmp_path):

@@ -20,3 +20,10 @@ def test_gateway_config_from_kwargs_allocates_named_runtime() -> None:
     assert config.command_endpoint.startswith("tcp://")
     assert config.event_endpoint.startswith("tcp://")
     assert config.market_endpoint.startswith("tcp://")
+    assert config.enable_trading is False
+
+
+def test_gateway_config_requires_explicit_write_opt_in() -> None:
+    config = GatewayConfig.from_kwargs(gateway_enable_trading="true")
+
+    assert config.enable_trading is True

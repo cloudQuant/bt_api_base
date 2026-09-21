@@ -17,6 +17,9 @@ from bt_api_base.registry import ExchangeRegistry
 
 logger = get_logger("gateway.runtime")
 
+_WRITE_COMMANDS = frozenset({"place_order", "cancel_order"})
+_TRADING_DISABLED_REASON = "gateway trading is disabled"
+
 
 class GatewayRuntime:
     """Run a registered gateway adapter behind ZeroMQ endpoints."""
@@ -109,6 +112,14 @@ class GatewayRuntime:
         command_type = str(getattr(command, "command_type", "") or "").lower()
         write_dispatched = False
         try:
+            if command_type in _WRITE_COMMANDS and not self.config.enable_trading:
+                return self._ack(
+                    command,
+                    bridge,
+                    False,
+                    "rejected",
+                    reason=_TRADING_DISABLED_REASON,
+                )
             if command_type == "get_account":
                 payload = self.adapter.get_balance() if self.adapter is not None else {}
                 return self._ack(command, bridge, True, "ok", payload=payload)

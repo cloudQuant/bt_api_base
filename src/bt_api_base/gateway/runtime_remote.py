@@ -25,6 +25,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_WRITE_COMMANDS = frozenset({"place_order", "cancel_order"})
+_TRADING_DISABLED_REASON = "gateway trading is disabled"
+
 
 class GatewayRuntime:
     ADAPTER_REGISTRY: dict[str, type[BaseGatewayAdapter]] = {}
@@ -324,6 +327,8 @@ class GatewayRuntime:
         }
 
     def _dispatch(self, command: str, payload: dict[str, Any]) -> Any:
+        if command in _WRITE_COMMANDS and not self.config.enable_trading:
+            raise PermissionError(_TRADING_DISABLED_REASON)
         if command == "ping":
             self.health.record_heartbeat()
             return {"ready": self._adapter_connected}

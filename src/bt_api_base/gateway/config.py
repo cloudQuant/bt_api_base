@@ -42,6 +42,7 @@ class GatewayConfig:
     selection_reason: str = ""
     base_dir: str = ""
     poll_timeout_ms: int = 100
+    enable_trading: bool = False
     extra: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -49,6 +50,7 @@ class GatewayConfig:
         self.asset_type = str(self.asset_type or "FUTURE").strip().upper()
         self.account_id = str(self.account_id or "default").strip()
         self.transport = str(self.transport or "tcp").strip().lower() or "tcp"
+        self.enable_trading = _coerce_bool(self.enable_trading, False)
         if self.transport == "ipc" and sys.platform.startswith("win"):
             self.transport = "tcp"
         if not self.base_dir:
@@ -121,6 +123,8 @@ class GatewayConfig:
             "base_dir",
             "gateway_poll_timeout_ms",
             "poll_timeout_ms",
+            "gateway_enable_trading",
+            "enable_trading",
         }
         return cls(
             runtime_name=runtime_name,
@@ -152,6 +156,12 @@ class GatewayConfig:
             poll_timeout_ms=_coerce_int(
                 kwargs.get("gateway_poll_timeout_ms") or kwargs.get("poll_timeout_ms"),
                 100,
+            ),
+            enable_trading=_coerce_bool(
+                kwargs.get("gateway_enable_trading")
+                if kwargs.get("gateway_enable_trading") not in (None, "")
+                else kwargs.get("enable_trading"),
+                False,
             ),
             extra={key: value for key, value in kwargs.items() if key not in known},
         )
@@ -197,6 +207,7 @@ class GatewayConfig:
             "command_timeout_sec": self.command_timeout_sec,
             "startup_timeout_sec": self.startup_timeout_sec,
             "poll_timeout_ms": self.poll_timeout_ms,
+            "enable_trading": self.enable_trading,
         }
 
     def _build_runtime_name(self) -> str:
@@ -339,3 +350,16 @@ def _coerce_int(value: Any, default: int) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def _coerce_bool(value: Any, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value in (None, ""):
+        return default
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return default
