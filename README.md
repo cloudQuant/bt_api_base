@@ -208,6 +208,16 @@ All exchange plugins in the bt_api ecosystem depend on bt_api_base:
 pip install bt_api_base
 ```
 
+The default install uses Python's standard logging fallback. To enable the
+native `spdlog` backend and daily-rotating file sink, install the optional extra:
+
+```bash
+pip install "bt_api_base[spdlog]"
+```
+
+Without this extra, file and optional console logging still work, but log files
+do not rotate daily.
+
 Or install from source:
 
 ```bash
@@ -454,6 +464,15 @@ bt_api 生态系统中所有交易所插件都依赖 bt_api_base：
 ```bash
 pip install bt_api_base
 ```
+
+默认安装使用 Python 标准日志后端。如需启用原生 `spdlog` 和按日轮转的文件
+日志，请安装可选依赖：
+
+```bash
+pip install "bt_api_base[spdlog]"
+```
+
+不安装此可选依赖时，文件日志和可选控制台日志仍可使用，但日志文件不会按日轮转。
 
 或从源码安装：
 
