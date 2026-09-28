@@ -57,6 +57,10 @@ bt_api_base/
 pip install bt_api_base
 ```
 
+The default install uses Python's standard logging fallback. Install
+`bt_api_base[spdlog]` to enable the native backend and daily log rotation; the
+fallback keeps file and optional console logging but does not rotate files daily.
+
 ### Exchange Registry
 
 ```python
@@ -178,6 +182,9 @@ All exchange plugins in the bt_api ecosystem depend on bt_api_base:
 ```bash
 pip install bt_api_base
 ```
+
+默认安装使用 Python 标准日志后端。安装 `bt_api_base[spdlog]` 可启用原生后端和
+按日轮转；标准日志回退仍保留文件及可选控制台日志，但不会按日轮转。
 
 ```python
 from bt_api_base.registry import ExchangeRegistry

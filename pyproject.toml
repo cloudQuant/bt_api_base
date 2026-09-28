@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bt_api_base"
-version = "0.15.4"
+version = "0.15.5"
 description = "Shared base abstractions for bt_api plugins"
 readme = "README.md"
 classifiers = [
@@ -35,7 +35,6 @@ dependencies = [
     "pyarrow>=14.0.0",
     "aiohttp>=3.9.0",
     "packaging>=24.0",
-    "spdlog>=2.0.0",
     "pytz>=2023.3",
     "python-rapidjson>=1.10",
     "httpx>=0.27.0",
@@ -47,6 +46,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+spdlog = ["spdlog>=2.0.0"]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21.0",

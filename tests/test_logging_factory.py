@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from unittest.mock import patch
 
 from bt_api_base import logging_factory
+from bt_api_base.functions import log_message
 
 
 class _FakeLogger:
@@ -160,3 +162,32 @@ def test_get_logger_cache_separates_print_info(monkeypatch) -> None:
     assert logger_a is logger_b
     assert logger_a is not logger_c
     assert created == ["cache-check:False", "cache-check:True"]
+
+
+def test_spdlog_unavailable_keeps_file_and_console_logging(monkeypatch, tmp_path, capsys) -> None:
+    monkeypatch.setattr(log_message, "_HAS_SPDLOG", False)
+    log_file = tmp_path / "fallback.log"
+    logger_name = "fallback-" + tmp_path.name
+    cache_key = (str(log_file), logger_name, 0, 0, True)
+    logger = None
+
+    try:
+        logger = log_message.SpdLogManager(
+            file_name=str(log_file),
+            logger_name=logger_name,
+            print_info=True,
+        ).create_logger()
+
+        assert isinstance(logger, logging.Logger)
+        logger.info("fallback message")
+        for handler in logger.handlers:
+            handler.flush()
+
+        assert "fallback message" in log_file.read_text(encoding="utf-8")
+        assert "fallback message" in capsys.readouterr().err
+    finally:
+        if logger is not None:
+            for handler in logger.handlers:
+                logger.removeHandler(handler)
+                handler.close()
+        log_message.SpdLogManager._logger_cache.pop(cache_key, None)
