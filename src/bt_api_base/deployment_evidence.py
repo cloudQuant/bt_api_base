@@ -113,8 +113,7 @@ def _snapshot_json(value: object, path: str = "") -> object:
         return snapshot
     if type(value) in (list, tuple):
         return [
-            _snapshot_json(nested, path + str(index) + ".")
-            for index, nested in enumerate(value)
+            _snapshot_json(nested, path + str(index) + ".") for index, nested in enumerate(value)
         ]
     raise DeploymentEvidenceError("unsupported JSON type at " + (path or "payload"))
 

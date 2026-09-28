@@ -154,7 +154,9 @@ def test_principal_policy_authorize_rejects_string_subclass_permission() -> None
 
 def test_principal_policy_rejects_string_subclass_permission() -> None:
     permission = _EvilStr("submit_order", "read_evidence")
-    with pytest.raises(DeploymentEvidenceError, match="allowed_permissions must contain only strings"):
+    with pytest.raises(
+        DeploymentEvidenceError, match="allowed_permissions must contain only strings"
+    ):
         PrincipalPolicy("policy-a", ("agent",), (permission,))
 
 
@@ -166,7 +168,9 @@ def test_actor_context_rejects_string_subclass_actor_kind() -> None:
 
 def test_principal_policy_rejects_string_subclass_actor_kind() -> None:
     actor_kind = _EvilStr("unknown", "agent")
-    with pytest.raises(DeploymentEvidenceError, match="allowed_actor_kinds must contain only strings"):
+    with pytest.raises(
+        DeploymentEvidenceError, match="allowed_actor_kinds must contain only strings"
+    ):
         PrincipalPolicy("policy-a", (actor_kind,))
 
 
@@ -343,7 +347,9 @@ def test_receipt_never_accepts_review_required_evidence_and_binds_every_identity
 
 
 def test_receipt_rejects_evidence_created_after_receipt_was_issued() -> None:
-    evidence = replace(_evidence("human_reviewed"), created_at=130.0, metadata={"source": "offline"})
+    evidence = replace(
+        _evidence("human_reviewed"), created_at=130.0, metadata={"source": "offline"}
+    )
     receipt = DeploymentAdmissionReceipt(
         receipt_id="receipt-1",
         evidence_digest=evidence.digest,
@@ -388,7 +394,9 @@ def test_receipt_requires_exact_evidence_type_even_when_fake_fields_match() -> N
 
 
 def test_receipt_allows_evidence_created_at_issue_time_and_now_boundary() -> None:
-    evidence = replace(_evidence("human_reviewed"), created_at=120.0, metadata={"source": "offline"})
+    evidence = replace(
+        _evidence("human_reviewed"), created_at=120.0, metadata={"source": "offline"}
+    )
     receipt = DeploymentAdmissionReceipt(
         receipt_id="receipt-1",
         evidence_digest=evidence.digest,
