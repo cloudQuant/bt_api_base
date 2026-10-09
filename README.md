@@ -1,4 +1,4 @@
-# bt_api_base
+﻿# bt_api_base
 
 [![PyPI Version](https://img.shields.io/pypi/v/bt_api_base.svg)](https://pypi.org/project/bt_api_base/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/bt_api_base.svg)](https://pypi.org/project/bt_api_base/)

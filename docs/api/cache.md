@@ -1,4 +1,4 @@
----
+﻿---
 title: Cache | bt_api_base
 ---
 

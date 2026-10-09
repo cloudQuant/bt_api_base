@@ -1,4 +1,4 @@
----
+﻿---
 title: Exceptions | bt_api_base
 ---
 

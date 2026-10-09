@@ -1,4 +1,4 @@
----
+﻿---
 title: Gateway | bt_api_base
 ---
 

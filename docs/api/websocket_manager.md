@@ -1,4 +1,4 @@
----
+﻿---
 title: WebSocketManager | bt_api_base
 ---
 
