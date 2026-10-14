@@ -17,6 +17,7 @@ from bt_api_base.account_protocol import (
     AccountBalance,
     AccountKey,
     AccountObservation,
+    AccountOpenOrder,
     AccountPosition,
     AccountResourceKey,
     AccountValuation,
@@ -103,6 +104,34 @@ def _position(
     return AccountPosition(**values)  # type: ignore[arg-type]
 
 
+def _open_order(
+    resource: AccountResourceKey | None = None,
+    instrument: MarketInstrumentKey | None = None,
+    **updates: object,
+) -> AccountOpenOrder:
+    values: dict[str, object] = {
+        "resource": resource or _resource(),
+        "instrument": instrument or _instrument(),
+        "order_id": "order-91",
+        "side": "buy",
+        "position_side": "long",
+        "order_type": "limit",
+        "status": "partially_filled",
+        "quantity": "2.000",
+        "filled_quantity": "0.500",
+        "qty_unit": "contracts",
+        "created_at_utc": _OLD_UTC,
+        "observed_at_utc": _COMPLETE_UTC,
+        "client_order_id": "client-91",
+        "limit_price": "65000.00",
+        "stop_price": None,
+        "price_currency": "USD",
+        "reduce_only": True,
+    }
+    values.update(updates)
+    return AccountOpenOrder(**values)  # type: ignore[arg-type]
+
+
 def _observation(**updates: object) -> AccountObservation:
     resource = _resource()
     values: dict[str, object] = {
@@ -164,6 +193,11 @@ def test_full_observation_round_trips_json_and_preserves_provider_lexemes() -> N
     restored = AccountObservation.from_dict(json.loads(encoded))
 
     assert restored == observation
+    assert restored.open_orders is None
+    assert restored.open_orders_complete is False
+    assert "open_orders" not in restored.to_dict()
+    assert "open_orders_complete" not in restored.to_dict()
+    assert set(restored.to_dict()) == AccountObservation._LEGACY_FIELDS
     assert restored.positions[0].quantity == "-2.500"
     assert restored.positions[0].average_price == "65000.1250"
     assert restored.balances[0].total == "100.00"
@@ -172,6 +206,153 @@ def test_full_observation_round_trips_json_and_preserves_provider_lexemes() -> N
     assert hash(restored) == hash(observation)
     with pytest.raises(FrozenInstanceError):
         restored.balances_complete = False  # type: ignore[misc]
+
+
+def test_open_order_and_new_observation_shape_round_trip_json() -> None:
+    order = _open_order()
+    order_mapping = order.to_dict()
+    assert set(order_mapping) == AccountOpenOrder._FIELDS
+    missing_order_field = dict(order_mapping)
+    del missing_order_field["order_id"]
+    with pytest.raises(ValueError):
+        AccountOpenOrder.from_dict(missing_order_field)
+    extra_order_field = {**order_mapping, "strategy_id": "strategy-1"}
+    with pytest.raises(ValueError):
+        AccountOpenOrder.from_dict(extra_order_field)
+
+    observation = _observation(open_orders=(order,), open_orders_complete=True)
+    encoded = json.dumps(observation.to_dict(), ensure_ascii=False, allow_nan=False)
+    restored = AccountObservation.from_dict(json.loads(encoded))
+
+    assert restored == observation
+    assert restored.open_orders == (order,)
+    assert restored.open_orders_complete is True
+    assert restored.open_orders is not None
+    assert restored.open_orders[0].quantity == "2.000"
+    assert restored.open_orders[0].filled_quantity == "0.500"
+    assert restored.open_orders[0].position_side == "long"
+    assert set(restored.to_dict()) == AccountObservation._FIELDS
+
+
+def test_empty_open_order_rows_are_distinct_from_missing_order_facts() -> None:
+    missing = _observation()
+    explicitly_empty = _observation(open_orders=(), open_orders_complete=False)
+
+    assert missing.open_orders is None
+    assert "open_orders" not in missing.to_dict()
+    assert explicitly_empty.open_orders == ()
+    assert explicitly_empty.to_dict()["open_orders"] == []
+    restored = AccountObservation.from_dict(explicitly_empty.to_dict())
+    assert restored.open_orders == ()
+    assert restored.open_orders is not None
+    assert restored.open_orders_complete is False
+
+
+def test_open_order_status_matches_positive_remaining_quantity() -> None:
+    open_order = _open_order(status="open", filled_quantity="0")
+    partially_filled = _open_order(status="partially_filled", filled_quantity="0.5")
+
+    assert open_order.quantity == "2.000"
+    assert open_order.filled_quantity == "0"
+    assert partially_filled.quantity == "2.000"
+    assert partially_filled.filled_quantity == "0.5"
+
+
+def test_open_order_preserves_finite_negative_prices_for_supported_markets() -> None:
+    order = _open_order(limit_price="-5.250", stop_price="-6.00")
+
+    assert order.limit_price == "-5.250"
+    assert order.stop_price == "-6.00"
+
+
+def test_account_observation_accepts_only_legacy_or_complete_new_order_shape() -> None:
+    legacy = _observation().to_dict()
+    new_shape = _observation(open_orders=(), open_orders_complete=False).to_dict()
+
+    missing_completion = dict(new_shape)
+    del missing_completion["open_orders_complete"]
+    with pytest.raises(ValueError):
+        AccountObservation.from_dict(missing_completion)
+
+    missing_rows = dict(legacy)
+    missing_rows["open_orders_complete"] = False
+    with pytest.raises(ValueError):
+        AccountObservation.from_dict(missing_rows)
+
+    null_rows = dict(new_shape)
+    null_rows["open_orders"] = None
+    with pytest.raises(TypeError):
+        AccountObservation.from_dict(null_rows)
+
+    with pytest.raises(ValueError):
+        replace(_observation(), open_orders=None, open_orders_complete=True)
+
+
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"quantity": "-1"},
+        {"quantity": "0"},
+        {"quantity": None},
+        {"filled_quantity": "-0.01"},
+        {"filled_quantity": "2.001"},
+        {"filled_quantity": "2.000"},
+        {"quantity": "NaN"},
+        {"limit_price": "Infinity"},
+        {"status": "open"},
+        {"status": "partially_filled", "filled_quantity": "0"},
+        {"side": "BUY"},
+        {"position_side": "both"},
+        {"status": "closed"},
+        {"reduce_only": 1},
+        {"created_at_utc": "2026-10-13T04:05:09Z"},
+    ],
+)
+def test_open_order_rejects_invalid_values_and_time_order(updates: dict[str, object]) -> None:
+    with pytest.raises((TypeError, ValueError)):
+        _open_order(**updates)
+
+
+def test_open_order_observation_requires_covered_matching_unique_rows() -> None:
+    order = _open_order()
+    with pytest.raises(ValueError, match="outside observation coverage"):
+        _observation(
+            open_orders=(_open_order(resource=_resource(margin_pool="coin-m")),),
+            open_orders_complete=True,
+        )
+
+    wrong_instrument = _instrument(provider="beta")
+    with pytest.raises(ValueError, match="does not match the account identity"):
+        _observation(
+            open_orders=(_open_order(instrument=wrong_instrument),),
+            open_orders_complete=True,
+        )
+
+    spot_resource = _resource(product_type="spot", margin_pool="spot-wallet")
+    with pytest.raises(ValueError, match="product_type"):
+        _observation(
+            coverage=(_resource(), spot_resource),
+            open_orders=(_open_order(resource=spot_resource),),
+            open_orders_complete=True,
+        )
+
+    with pytest.raises(ValueError, match="duplicate open order"):
+        _observation(open_orders=(order, order), open_orders_complete=True)
+
+    same_id_other_instrument = replace(
+        order,
+        instrument=_instrument(instrument_id="ETH-USD-PERP", native_symbol="ETHUSD_PERP"),
+    )
+    accepted_scoped_ids = _observation(
+        open_orders=(order, same_id_other_instrument), open_orders_complete=True
+    )
+    assert len(accepted_scoped_ids.open_orders or ()) == 2
+
+    with pytest.raises(ValueError, match="must not follow completion"):
+        _observation(
+            open_orders=(_open_order(observed_at_utc="2026-10-13T04:05:09Z"),),
+            open_orders_complete=True,
+        )
 
 
 def test_account_owner_digest_and_resource_dimensions_are_not_strategy_scopes() -> None:
