@@ -31,7 +31,7 @@ _MODULE_LOG_MAP = {
 }
 
 #  logger，
-_logger_cache: dict[tuple[str, bool], _LoggerProxy] = {}
+_logger_cache: dict[tuple[str, bool, str], _LoggerProxy] = {}
 _logger_cache_lock = threading.Lock()
 
 
@@ -142,15 +142,20 @@ def _build_custom_log_file_name(module: str) -> str:
     return f"{sanitized}.log"
 
 
-def get_logger(module: str, print_info: bool = False) -> _LoggerProxy:
-    """logger
+def get_logger(module: str, print_info: bool = False, *, backend: str = "stdlib") -> _LoggerProxy:
+    """Return the configured logger proxy.
 
-    :param module: ， "api", "feed", "event_bus"，
-                   （ {module}.log）
-    :param print_info:
-    :return: spdlog logger （ _LoggerProxy ）
+    ``stdlib`` is the default and does not import the optional native logger.
+    Pass ``backend="spdlog"`` explicitly to use the optional spdlog extra.
+
+    :param module: Logger key such as ``api``, ``feed`` or ``event_bus``.
+    :param print_info: Also write to the console when true.
+    :param backend: ``stdlib`` (default) or the explicitly selected ``spdlog``.
+    :return: A formatting-compatible :class:`_LoggerProxy`.
     """
-    cache_key = (module, print_info)
+    if backend not in {"stdlib", "spdlog"}:
+        raise ValueError("backend must be 'stdlib' or 'spdlog'")
+    cache_key = (module, print_info, backend)
     with _logger_cache_lock:
         cached_logger: _LoggerProxy | None = _logger_cache.get(cache_key)
         if cached_logger is not None:
@@ -161,12 +166,13 @@ def get_logger(module: str, print_info: bool = False) -> _LoggerProxy:
             file_name = _build_custom_log_file_name(module)
             logger_name = module
 
-        logger = _LoggerProxy(
-            SpdLogManager(
-                file_name=_resolve_log_file_name(file_name),
-                logger_name=logger_name,
-                print_info=print_info,
-            ).create_logger()
-        )
+        manager_kwargs: dict[str, Any] = {
+            "file_name": _resolve_log_file_name(file_name),
+            "logger_name": logger_name,
+            "print_info": print_info,
+        }
+        if backend != "stdlib":
+            manager_kwargs["backend"] = backend
+        logger = _LoggerProxy(SpdLogManager(**manager_kwargs).create_logger())
         _logger_cache[cache_key] = logger
         return logger
