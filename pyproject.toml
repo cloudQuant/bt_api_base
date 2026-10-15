@@ -32,7 +32,9 @@ dependencies = [
     "websocket-client>=1.6.0",
     "pyyaml>=6.0",
     "pandas>=2.0.0",
-    "pyarrow>=14.0.0",
+    # PyArrow 26 requires NumPy 2, while Backtrader pins NumPy <2 before Python 3.13.
+    "pyarrow>=14.0.0,<26.0.0; python_version < '3.13'",
+    "pyarrow>=14.0.0; python_version >= '3.13'",
     "aiohttp>=3.9.0",
     "packaging>=24.0",
     "pytz>=2023.3",
