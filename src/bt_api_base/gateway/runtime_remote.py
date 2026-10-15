@@ -5,9 +5,8 @@ import logging
 import threading
 import time
 from collections import deque
+from importlib import import_module
 from typing import TYPE_CHECKING, Any
-
-import zmq
 
 from bt_api_base.gateway.health import ConnectionState, GatewayHealth, GatewayState
 from bt_api_base.gateway.order_identity_map import OrderIdentityMap
@@ -27,6 +26,31 @@ logger = logging.getLogger(__name__)
 
 _WRITE_COMMANDS = frozenset({"place_order", "cancel_order"})
 _TRADING_DISABLED_REASON = "gateway trading is disabled"
+
+
+class _OptionalZmqModule:
+    """Load PyZMQ only when the legacy remote runtime is explicitly used."""
+
+    def __init__(self) -> None:
+        self._module: Any | None = None
+
+    def __getattr__(self, name: str) -> Any:
+        module = self._module
+        if module is None:
+            try:
+                module = import_module("zmq")
+            except ModuleNotFoundError as exc:
+                if exc.name != "zmq":
+                    raise
+                raise ImportError(
+                    "The legacy ZeroMQ gateway requires the optional transport dependency; "
+                    "install bt_api_base[transport-zmq] or bt_api_py[transport-zmq]."
+                ) from exc
+            self._module = module
+        return getattr(module, name)
+
+
+zmq = _OptionalZmqModule()
 
 
 class GatewayRuntime:
