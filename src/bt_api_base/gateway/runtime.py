@@ -8,76 +8,34 @@ import threading
 import time
 from contextlib import suppress
 from dataclasses import asdict, is_dataclass
-from typing import Any
+from typing import Any, NoReturn
 
+from bt_api_base.exceptions import ConfigurationError
 from bt_api_base.gateway.config import GatewayConfig
-from bt_api_base.gateway.registrar import GatewayRuntimeRegistrar
 from bt_api_base.logging_factory import get_logger
-from bt_api_base.registry import ExchangeRegistry
 
 logger = get_logger("gateway.runtime")
 
 _WRITE_COMMANDS = frozenset({"place_order", "cancel_order"})
 _TRADING_DISABLED_REASON = "gateway trading is disabled"
+_LEGACY_RUNTIME_MIGRATION_MESSAGE = (
+    "The legacy bt_api_base.gateway.GatewayRuntime is disabled; migrate startup to "
+    "ServiceHost and configure service.order_entry."
+)
 
 
 class GatewayRuntime:
-    """Run a registered gateway adapter behind ZeroMQ endpoints."""
+    """Retired legacy entrypoint; construct a ServiceHost service instead."""
 
     def __init__(self, config: GatewayConfig, **kwargs: Any) -> None:
-        self.config = config
-        self.kwargs = config.to_kwargs()
-        self.kwargs.update(kwargs)
-        self.adapter = None
-        self.health = GatewayRuntimeHealth(self)
-        self._state = "stopped"
-        self._adapter_connected = False
-        self._stop = threading.Event()
-        self._pump_thread: threading.Thread | None = None
-        self._command_server = None
-        self._event_publisher = None
-        self._market_publisher = None
-        self._started_at = 0.0
-        self._last_heartbeat = 0.0
-        self._last_tick_time = 0.0
-        self._last_order_time = 0.0
-        self._tick_count = 0
-        self._order_count = 0
-        self._subscriptions: set[str] = set()
-        self._recent_errors: list[dict[str, Any]] = []
-        self._lock = threading.RLock()
+        raise ConfigurationError(_LEGACY_RUNTIME_MIGRATION_MESSAGE)
 
     @property
     def is_running(self) -> bool:
         return self._state == "running"
 
     def start_in_thread(self) -> None:
-        if self.is_running:
-            return
-        bridge = _load_forwarding_bridge()
-        adapter_cls = _resolve_adapter(self.config.exchange_type)
-        self._stop.clear()
-        self._state = "starting"
-        self._started_at = time.time()
-        self._last_heartbeat = self._started_at
-        try:
-            self._event_publisher = bridge.ZmqEventPublisher(self.config.event_endpoint)
-            self._market_publisher = bridge.ZmqEventPublisher(self.config.market_endpoint)
-            self._command_server = bridge.ZmqCommandServer(
-                self.config.command_endpoint, self._handle_command
-            )
-            self._command_server.start()
-            self.adapter = adapter_cls(**self.kwargs)
-            self.adapter.connect()
-            self._adapter_connected = True
-            self._state = "running"
-            self._pump_thread = threading.Thread(target=self._pump_adapter_output, daemon=True)
-            self._pump_thread.start()
-        except Exception as exc:
-            self._record_error("startup", exc)
-            self._state = "error"
-            self._cleanup()
-            raise
+        raise ConfigurationError(_LEGACY_RUNTIME_MIGRATION_MESSAGE)
 
     def stop(self) -> None:
         if self._state == "stopped" and not self._adapter_connected:
@@ -404,32 +362,11 @@ def _load_forwarding_bridge() -> _ForwardingBridge:
 
 
 def _resolve_adapter(exchange_type: str) -> type[Any]:
-    exchange = str(exchange_type or "").strip().upper()
-    adapter_cls = GatewayRuntimeRegistrar.get_adapter(exchange)
-    if adapter_cls is not None:
-        return adapter_cls
-    _load_default_plugin(exchange)
-    adapter_cls = GatewayRuntimeRegistrar.get_adapter(exchange)
-    if adapter_cls is None:
-        raise RuntimeError(f"No gateway adapter registered for {exchange}")
-    return adapter_cls
+    _load_default_plugin(str(exchange_type or "").strip().upper())
 
 
-def _load_default_plugin(exchange_type: str) -> None:
-    module_names = {
-        "CTP": "bt_api_ctp.plugin",
-        "IB_WEB": "bt_api_ib_web.plugin",
-        "MT5": "bt_api_mt5.plugin",
-        "BINANCE": "bt_api_binance.plugin",
-        "OKX": "bt_api_okx.plugin",
-    }
-    module_name = module_names.get(exchange_type)
-    if not module_name:
-        return
-    module = importlib.import_module(module_name)
-    register = getattr(module, "register_plugin", None)
-    if callable(register):
-        register(ExchangeRegistry, GatewayRuntimeRegistrar)
+def _load_default_plugin(exchange_type: str) -> NoReturn:
+    raise ConfigurationError(_LEGACY_RUNTIME_MIGRATION_MESSAGE)
 
 
 def _to_dict(value: Any) -> dict[str, Any]:

@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections import deque
 from typing import Any
 
-from bt_api_base.gateway.registrar import GatewayRuntimeRegistrar
 from bt_api_base.registry import ExchangeRegistry
 
 
@@ -31,7 +30,3 @@ class EventBusStub:
 
 def create_isolated_exchange_registry() -> ExchangeRegistry:
     return ExchangeRegistry.create_isolated()
-
-
-def reset_gateway_runtime_registrar() -> None:
-    GatewayRuntimeRegistrar.clear()

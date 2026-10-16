@@ -6,16 +6,15 @@ import threading
 import time
 from collections import deque
 from importlib import import_module
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NoReturn
 
+from bt_api_base.exceptions import ConfigurationError
 from bt_api_base.gateway.health import ConnectionState, GatewayHealth, GatewayState
 from bt_api_base.gateway.order_identity_map import OrderIdentityMap
 from bt_api_base.gateway.order_ref_allocator import OrderRefAllocator
 from bt_api_base.gateway.protocol import CHANNEL_EVENT, CHANNEL_MARKET, dumps_message, loads_message
 from bt_api_base.gateway.registrar import GatewayRuntimeRegistrar
 from bt_api_base.gateway.subscription_manager import SubscriptionManager
-from bt_api_base.plugins.loader import PluginLoader
-from bt_api_base.registry import ExchangeRegistry
 
 if TYPE_CHECKING:
     from bt_api_base.gateway.adapters.base import BaseGatewayAdapter
@@ -26,6 +25,14 @@ logger = logging.getLogger(__name__)
 
 _WRITE_COMMANDS = frozenset({"place_order", "cancel_order"})
 _TRADING_DISABLED_REASON = "gateway trading is disabled"
+_LEGACY_RUNTIME_MIGRATION_MESSAGE = (
+    "The legacy bt_api_base.gateway.runtime_remote.GatewayRuntime is disabled; "
+    "migrate startup to ServiceHost and configure service.order_entry."
+)
+
+
+def _raise_legacy_runtime_migration_error() -> NoReturn:
+    raise ConfigurationError(_LEGACY_RUNTIME_MIGRATION_MESSAGE)
 
 
 class _OptionalZmqModule:
@@ -54,118 +61,18 @@ zmq = _OptionalZmqModule()
 
 
 class GatewayRuntime:
+    """Retired legacy entrypoint; construct a ServiceHost service instead."""
+
     ADAPTER_REGISTRY: dict[str, type[BaseGatewayAdapter]] = {}
-    _plugins_loaded = False
-    _plugin_loader_lock = threading.Lock()
 
     def __init__(self, config: GatewayConfig, **kwargs: Any) -> None:
-        self.config = config
-        self.kwargs = dict(kwargs)
-        self.context = zmq.Context.instance()
-        self.command_socket: zmq.Socket | None = None
-        self.event_socket: zmq.Socket | None = None
-        self.market_socket: zmq.Socket | None = None
-        self.poller = zmq.Poller()
-        self.adapter = self._create_adapter()
-        self.running = False
-        self._adapter_connected = False
-        self.thread: threading.Thread | None = None
-
-        self.subscriptions = SubscriptionManager()
-        self.order_map = OrderIdentityMap()
-        self.health = GatewayHealth()
-        self.order_ref_allocator: OrderRefAllocator | None = None
-        self.tick_writer: TickWriter | None = None
-        self._last_runtime_heartbeat_monotonic = 0.0
-        self._recent_trades: deque[dict[str, Any]] = deque(
-            maxlen=max(int(kwargs.get("recent_trades_limit") or 1000), 1)
-        )
-
-        if config.exchange_type == "CTP":
-            state_dir = kwargs.get("state_dir") or config.base_dir or "/tmp/bt_gateway_state"  # nosec B108
-            self.order_ref_allocator = OrderRefAllocator(config.account_id, state_dir=state_dir)
-
-        tick_writer_cfg = kwargs.get("tick_writer")
-        if isinstance(tick_writer_cfg, dict):
-            from bt_api_base.gateway.storage.tick_writer import TickWriter as _TickWriter
-
-            self.tick_writer = _TickWriter(
-                base_dir=tick_writer_cfg.get("base_dir", "/tmp/bt_ticks"),  # nosec B108
-                exchange=config.exchange_type,
-                asset_type=config.asset_type,
-                flush_count=tick_writer_cfg.get("flush_count", 1000),
-                flush_interval_sec=tick_writer_cfg.get("flush_interval_sec", 5.0),
-            )
-
-        self.health.set_extra("exchange", config.exchange_type)
-        self.health.set_extra("asset_type", config.asset_type)
-        self.health.set_extra("account_id", config.account_id)
+        _raise_legacy_runtime_migration_error()
 
     def start(self) -> None:
-        if self.running:
-            return
-        self.health.set_state(GatewayState.STARTING)
-        self._adapter_connected = False
-        try:
-            self.command_socket = self.context.socket(zmq.ROUTER)
-            self.event_socket = self.context.socket(zmq.PUB)
-            self.market_socket = self.context.socket(zmq.PUB)
-            self.command_socket.bind(self.config.command_endpoint)
-            self.event_socket.bind(self.config.event_endpoint)
-            self.market_socket.bind(self.config.market_endpoint)
-            self.poller.register(self.command_socket, zmq.POLLIN)
-        except zmq.ZMQError as exc:
-            self.health.set_state(GatewayState.ERROR)
-            self.health.record_error("runtime_start", f"{type(exc).__name__}: {exc}")
-            logger.error(
-                "GatewayRuntime failed to bind sockets for %s: %s: %s",
-                self.config.exchange_type,
-                type(exc).__name__,
-                exc,
-            )
-            self._cleanup_sockets()
-            self.running = False
-            return
-        if self.tick_writer is not None:
-            self.tick_writer.start()
-        self.running = True
-        self.health.set_state(GatewayState.RUNNING)
-        self._refresh_runtime_heartbeat(force=True)
-        adapter_thread = threading.Thread(target=self._connect_adapter_background, daemon=True)
-        adapter_thread.start()
-        logger.info("GatewayRuntime started: %s", self.config.exchange_type)
-        try:
-            while self.running:
-                try:
-                    self._handle_commands()
-                    if self._adapter_connected:
-                        self._flush_adapter_output()
-                    self._refresh_runtime_heartbeat()
-                except zmq.ZMQError as exc:
-                    if not self.running:
-                        break
-                    self._handle_runtime_failure("runtime_loop", exc)
-                    return
-                except Exception as exc:
-                    if not self.running:
-                        break
-                    self._handle_runtime_failure("runtime_loop", exc)
-                    return
-        finally:
-            self._cleanup_sockets()
+        _raise_legacy_runtime_migration_error()
 
     def start_in_thread(self) -> None:
-        if self.thread is not None and self.thread.is_alive():
-            return
-        self.thread = threading.Thread(target=self.start, daemon=True)
-        self.thread.start()
-        deadline = time.monotonic() + 2.0
-        while (
-            not self.running
-            and self.health.state != GatewayState.ERROR
-            and time.monotonic() < deadline
-        ):
-            time.sleep(0.05)
+        _raise_legacy_runtime_migration_error()
 
     def stop(self) -> None:
         self.health.set_state(GatewayState.STOPPING)
@@ -197,14 +104,7 @@ class GatewayRuntime:
 
     @classmethod
     def _ensure_plugins_loaded(cls) -> None:
-        if cls._plugins_loaded:
-            return
-        with cls._plugin_loader_lock:
-            if cls._plugins_loaded:
-                return
-            loader = PluginLoader(ExchangeRegistry(), GatewayRuntimeRegistrar)
-            loader.load_all()
-            cls._plugins_loaded = True
+        _raise_legacy_runtime_migration_error()
 
     @classmethod
     def register_adapter(cls, exchange_type: str, adapter_cls: type[BaseGatewayAdapter]) -> None:
@@ -214,16 +114,7 @@ class GatewayRuntime:
 
     @classmethod
     def get_adapter_class(cls, exchange_type: str) -> type[BaseGatewayAdapter]:
-        normalized = str(exchange_type).strip().upper()
-        adapter_cls = cls.ADAPTER_REGISTRY.get(normalized)
-        if adapter_cls is not None:
-            return adapter_cls
-        cls._ensure_plugins_loaded()
-        adapter_cls = GatewayRuntimeRegistrar.get_adapter(normalized)
-        if adapter_cls is None:
-            raise ValueError(f"unsupported gateway exchange: {exchange_type}")
-        cls.ADAPTER_REGISTRY[normalized] = adapter_cls
-        return adapter_cls
+        _raise_legacy_runtime_migration_error()
 
     def _create_adapter(self) -> BaseGatewayAdapter:
         adapter_cls = self.get_adapter_class(self.config.exchange_type)

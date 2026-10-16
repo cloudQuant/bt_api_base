@@ -22,42 +22,12 @@ LOG_PREFIX = "[bt_api_base.plugins]"
 logger = logging.getLogger(__name__)
 
 
-class _IsolatedRuntimeRegistrar:
-    def __init__(self) -> None:
-        """__init__ method"""
-        self._adapters: dict[str, type[Any]] = {}
-
-    def register_adapter(self, exchange_type: str, adapter_cls: type[Any]) -> None:
-        """register_adapter method"""
-        normalized = str(exchange_type).strip().upper()
-        existing = self._adapters.get(normalized)
-        if existing is not None and existing is not adapter_cls:
-            raise PluginRegistrationError(
-                f"duplicate adapter registration inside plugin: {normalized}"
-            )
-        self._adapters[normalized] = adapter_cls
-
-    def get_adapter(self, exchange_type: str) -> type[Any] | None:
-        """get_adapter method"""
-        normalized = str(exchange_type).strip().upper()
-        return self._adapters.get(normalized)
-
-    def list_adapters(self) -> list[str]:
-        """list_adapters method"""
-        return list(self._adapters.keys())
-
-    def items(self) -> list[tuple[str, type[Any]]]:
-        """items method"""
-        return list(self._adapters.items())
-
-
 class PluginLoader:
     """Class PluginLoader"""
 
-    def __init__(self, registry: Any, runtime_registrar: Any) -> None:
+    def __init__(self, registry: Any) -> None:
         """__init__ method"""
         self.registry = registry
-        self.runtime_registrar = runtime_registrar
         self.loaded: dict[str, PluginInfo] = {}
         self.failed: dict[str, Exception] = {}
         self.skipped: dict[str, Exception] = {}
@@ -159,10 +129,9 @@ class PluginLoader:
             return
 
         isolated_registry = self._create_isolated_registry()
-        isolated_runtime = _IsolatedRuntimeRegistrar()
         info: PluginInfo | None = None
         try:
-            info = register_plugin(isolated_registry, isolated_runtime)
+            info = register_plugin(isolated_registry)
             if not isinstance(info, PluginInfo):
                 raise PluginRegistrationError(
                     f"plugin {entry_name} returned invalid plugin metadata: {type(info).__name__}"
@@ -170,9 +139,9 @@ class PluginLoader:
             if not info.plugin_module:
                 info = replace(info, plugin_module=entry_module)
             self._check_core_compatibility(info)
-            self._check_duplicate_registration(info, isolated_runtime)
+            self._check_registry_contract(info, isolated_registry)
+            self._check_duplicate_registration(info)
             self._commit_registry(isolated_registry)
-            self._commit_runtime(isolated_runtime)
         except PluginOptionalDependencyError as exc:
             failure_key = self._failure_key(entry_name, info)
             logger.info("%s plugin %s skipped: %s", LOG_PREFIX, entry_name, exc)
@@ -222,30 +191,14 @@ class PluginLoader:
                 f"plugin {info.name} requires core {info.core_requires}, current={__version__}"
             )
 
-    def _check_duplicate_registration(
-        self,
-        info: PluginInfo,
-        isolated_runtime: _IsolatedRuntimeRegistrar,
-    ) -> None:
+    def _check_duplicate_registration(self, info: PluginInfo) -> None:
         duplicate_exchanges = [
             exchange_name
             for exchange_name in info.supported_exchanges
             if self.registry.has_exchange(exchange_name)
         ]
-        duplicate_adapters = [
-            exchange_type
-            for exchange_type in isolated_runtime.list_adapters()
-            if self.runtime_registrar.get_adapter(exchange_type) is not None
-        ]
-        if duplicate_exchanges or duplicate_adapters:
-            detail_parts: list[str] = []
-            if duplicate_exchanges:
-                detail_parts.append(
-                    f"duplicate exchanges: {', '.join(sorted(duplicate_exchanges))}"
-                )
-            if duplicate_adapters:
-                detail_parts.append(f"duplicate adapters: {', '.join(sorted(duplicate_adapters))}")
-            detail = "; ".join(detail_parts)
+        if duplicate_exchanges:
+            detail = f"duplicate exchanges: {', '.join(sorted(duplicate_exchanges))}"
             logger.warning(
                 "%s plugin %s skipped due to duplicate registration: %s",
                 LOG_PREFIX,
@@ -253,6 +206,38 @@ class PluginLoader:
                 detail,
             )
             raise PluginRegistrationError(f"duplicate registration skipped: {detail}")
+
+    @staticmethod
+    def _check_registry_contract(info: PluginInfo, isolated_registry: Any) -> None:
+        declared = info.supported_exchanges
+        if (
+            type(declared) is not tuple
+            or any(type(name) is not str or not name.strip() for name in declared)
+            or len(set(declared)) != len(declared)
+        ):
+            raise PluginRegistrationError(
+                f"plugin {info.name} has invalid supported-exchange metadata"
+            )
+        registered = tuple(isolated_registry.list_exchanges())
+        registered_set = set(registered)
+        declared_set = set(declared)
+        if not declared_set:
+            raise PluginRegistrationError(
+                f"plugin {info.name} is unavailable: it declares no supported exchanges"
+            )
+        if registered_set != declared_set:
+            missing = sorted(declared_set - registered_set)
+            undeclared = sorted(registered_set - declared_set)
+            detail_parts = []
+            if missing:
+                detail_parts.append(f"declared exchanges without feeds: {', '.join(missing)}")
+            if undeclared:
+                detail_parts.append(f"unlisted registered exchanges: {', '.join(undeclared)}")
+            detail = "; ".join(detail_parts) or "duplicate registered exchanges"
+            raise PluginRegistrationError(
+                f"plugin {info.name} registry does not match its supported-exchange metadata: "
+                f"{detail}"
+            )
 
     def _commit_registry(self, isolated_registry: Any) -> None:
         for exchange_name in isolated_registry.list_exchanges():
@@ -272,10 +257,6 @@ class PluginLoader:
                 exchange_name
             ).items():
                 self.registry.register_stream(exchange_name, stream_type, stream_class)
-
-    def _commit_runtime(self, isolated_runtime: _IsolatedRuntimeRegistrar) -> None:
-        for exchange_type, adapter_cls in isolated_runtime.items():
-            self.runtime_registrar.register_adapter(exchange_type, adapter_cls)
 
     @staticmethod
     def _entry_point_module(entry_point: Any) -> str:
