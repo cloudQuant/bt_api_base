@@ -6,6 +6,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any, ClassVar
 
 from bt_api_base.service_protocol import MAX_REFERENCE_BYTES
@@ -172,10 +173,33 @@ class MarketSubscriptionKey:
         )
 
 
+@dataclass(frozen=True)
+class MarketProviderEvent:
+    """One provider observation waiting for owner-thread Hub publication.
+
+    The generation is internal acquisition context and is never copied into
+    the public wire event. Providers return bounded batches of these records
+    from their nonblocking ``poll`` method; the Hub accepts only the active
+    generation for the matching stream.
+    """
+
+    generation: str
+    observed_at_utc: str
+    data: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        _check_text(self.generation, "generation")
+        _check_text(self.observed_at_utc, "observed_at_utc")
+        if not isinstance(self.data, Mapping) or any(type(key) is not str for key in self.data):
+            raise TypeError("data must be a string-keyed mapping")
+        object.__setattr__(self, "data", MappingProxyType(dict(self.data)))
+
+
 __all__ = [
     "MARKET_EVENT_OPERATION",
     "MARKET_EVENT_SCHEMA",
     "MARKET_EVENT_SCHEMA_VERSION",
     "MarketInstrumentKey",
+    "MarketProviderEvent",
     "MarketSubscriptionKey",
 ]

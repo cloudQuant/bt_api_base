@@ -16,6 +16,7 @@ from bt_api_base.market_protocol import (
     MARKET_EVENT_SCHEMA,
     MARKET_EVENT_SCHEMA_VERSION,
     MarketInstrumentKey,
+    MarketProviderEvent,
     MarketSubscriptionKey,
 )
 from bt_api_base.service_protocol import (
@@ -77,6 +78,30 @@ def test_keys_are_frozen_hashable_and_round_trip_through_json() -> None:
     exported = key.to_dict()
     exported["instrument"]["native_symbol"] = "changed"  # type: ignore[index]
     assert key.instrument.native_symbol == "BTCUSD_PERP"
+
+
+def test_provider_event_copies_payload_and_carries_internal_generation() -> None:
+    projection = {"price": 65000.25}
+    event = MarketProviderEvent(
+        generation="generation-1",
+        observed_at_utc="2026-10-16T00:00:00Z",
+        data=projection,
+    )
+
+    projection["price"] = 0.0
+    assert event.data["price"] == 65000.25
+    assert event.generation == "generation-1"
+    with pytest.raises(TypeError):
+        event.data["price"] = 0.0  # type: ignore[index]
+    with pytest.raises(FrozenInstanceError):
+        event.generation = "generation-2"  # type: ignore[misc]
+
+    with pytest.raises(TypeError, match="string-keyed mapping"):
+        MarketProviderEvent(
+            generation="generation-1",
+            observed_at_utc="2026-10-16T00:00:00Z",
+            data={1: "invalid"},  # type: ignore[dict-item]
+        )
 
 
 def test_stream_identity_includes_every_sharing_dimension() -> None:
