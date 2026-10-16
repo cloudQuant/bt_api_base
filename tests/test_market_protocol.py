@@ -17,6 +17,7 @@ from bt_api_base.market_protocol import (
     MARKET_EVENT_SCHEMA_VERSION,
     MarketInstrumentKey,
     MarketProviderEvent,
+    MarketSourceDescriptor,
     MarketSubscriptionKey,
 )
 from bt_api_base.service_protocol import (
@@ -57,6 +58,23 @@ def _key(**updates: object) -> MarketSubscriptionKey:
     return MarketSubscriptionKey(**values)  # type: ignore[arg-type]
 
 
+def _source_descriptor(**updates: object) -> MarketSourceDescriptor:
+    key = _key()
+    values: dict[str, object] = {
+        "key": key,
+        "stream_id": key.stream_id,
+        "epoch": "epoch-1",
+        "provider": key.instrument.provider,
+        "source": "ctp.native.md",
+        "connection_generation": 1,
+        "clock_domain_id": "ctp-md-process:123:monotonic:session-a",
+        "clock_source_session_id": "session-a",
+        "clock_source": "time.monotonic_ns",
+    }
+    values.update(updates)
+    return MarketSourceDescriptor(**values)  # type: ignore[arg-type]
+
+
 def test_keys_are_frozen_hashable_and_round_trip_through_json() -> None:
     instrument = _instrument()
     key = _key(instrument=instrument)
@@ -78,6 +96,67 @@ def test_keys_are_frozen_hashable_and_round_trip_through_json() -> None:
     exported = key.to_dict()
     exported["instrument"]["native_symbol"] = "changed"  # type: ignore[index]
     assert key.instrument.native_symbol == "BTCUSD_PERP"
+
+
+def test_source_descriptor_is_frozen_and_round_trips_exact_complete_key() -> None:
+    descriptor = _source_descriptor()
+    restored = MarketSourceDescriptor.from_dict(json.loads(json.dumps(descriptor.to_dict())))
+
+    assert restored == descriptor
+    assert restored.key == _key()
+    assert restored.stream_id == descriptor.key.stream_id
+    assert set(restored.to_dict()) == {
+        "key",
+        "stream_id",
+        "epoch",
+        "provider",
+        "source",
+        "connection_generation",
+        "clock_domain_id",
+        "clock_source_session_id",
+        "clock_source",
+    }
+    with pytest.raises(FrozenInstanceError):
+        descriptor.epoch = "epoch-2"  # type: ignore[misc]
+    payload = descriptor.to_dict()
+    payload["key"]["instrument"]["native_symbol"] = "changed"  # type: ignore[index]
+    assert descriptor.key.instrument.native_symbol == "BTCUSD_PERP"
+
+
+@pytest.mark.parametrize(
+    "field,value,error",
+    [
+        ("stream_id", "market-other", ValueError),
+        ("epoch", " ", ValueError),
+        ("provider", "other", ValueError),
+        ("source", "", ValueError),
+        ("connection_generation", True, TypeError),
+        ("connection_generation", 0, ValueError),
+        ("connection_generation", "1", TypeError),
+        ("clock_domain_id", "", ValueError),
+        ("clock_source_session_id", "", ValueError),
+        ("clock_source", "", ValueError),
+    ],
+)
+def test_source_descriptor_rejects_unbound_or_untyped_fields(
+    field: str, value: object, error: type[Exception]
+) -> None:
+    with pytest.raises(error):
+        _source_descriptor(**{field: value})
+
+
+def test_source_descriptor_from_dict_rejects_nonexact_fields_and_nested_key() -> None:
+    descriptor = _source_descriptor().to_dict()
+    with pytest.raises(ValueError):
+        MarketSourceDescriptor.from_dict({**descriptor, "quality": "verified"})
+    with pytest.raises(ValueError):
+        MarketSourceDescriptor.from_dict(
+            {key: value for key, value in descriptor.items() if key != "source"}
+        )
+    wrong_nested_key = dict(descriptor)
+    wrong_nested_key["key"] = {**descriptor["key"], "extra": "not-accepted"}  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        MarketSourceDescriptor.from_dict(wrong_nested_key)
 
 
 def test_provider_event_copies_payload_and_carries_internal_generation() -> None:

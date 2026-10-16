@@ -174,6 +174,92 @@ class MarketSubscriptionKey:
 
 
 @dataclass(frozen=True)
+class MarketSourceDescriptor:
+    """Authenticated identity of the active provider source for one market key.
+
+    This descriptor carries source and clock identities only. It deliberately
+    makes no statement about data quality, freshness, or clock calibration.
+    """
+
+    key: MarketSubscriptionKey
+    stream_id: str
+    epoch: str
+    provider: str
+    source: str
+    connection_generation: int
+    clock_domain_id: str
+    clock_source_session_id: str
+    clock_source: str
+
+    _FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "key",
+            "stream_id",
+            "epoch",
+            "provider",
+            "source",
+            "connection_generation",
+            "clock_domain_id",
+            "clock_source_session_id",
+            "clock_source",
+        }
+    )
+
+    def __post_init__(self) -> None:
+        if type(self.key) is not MarketSubscriptionKey:
+            raise TypeError("key must be a MarketSubscriptionKey")
+        for field in (
+            "stream_id",
+            "epoch",
+            "provider",
+            "source",
+            "clock_domain_id",
+            "clock_source_session_id",
+            "clock_source",
+        ):
+            _check_text(getattr(self, field), field)
+        if self.stream_id != self.key.stream_id:
+            raise ValueError("stream_id does not match key")
+        if self.provider != self.key.instrument.provider:
+            raise ValueError("provider does not match key")
+        if type(self.connection_generation) is not int:
+            raise TypeError("connection_generation must be an integer")
+        if self.connection_generation <= 0:
+            raise ValueError("connection_generation must be a positive integer")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the exact JSON-ready descriptor shape."""
+        return {
+            "key": self.key.to_dict(),
+            "stream_id": self.stream_id,
+            "epoch": self.epoch,
+            "provider": self.provider,
+            "source": self.source,
+            "connection_generation": self.connection_generation,
+            "clock_domain_id": self.clock_domain_id,
+            "clock_source_session_id": self.clock_source_session_id,
+            "clock_source": self.clock_source,
+        }
+
+    @classmethod
+    def from_dict(cls, mapping: Mapping[str, Any]) -> MarketSourceDescriptor:
+        """Load the exact descriptor shape and its complete immutable key."""
+        raw = _require_exact_mapping(mapping, cls._FIELDS, "market source descriptor")
+        key = MarketSubscriptionKey.from_dict(raw["key"])
+        return cls(
+            key=key,
+            stream_id=raw["stream_id"],
+            epoch=raw["epoch"],
+            provider=raw["provider"],
+            source=raw["source"],
+            connection_generation=raw["connection_generation"],
+            clock_domain_id=raw["clock_domain_id"],
+            clock_source_session_id=raw["clock_source_session_id"],
+            clock_source=raw["clock_source"],
+        )
+
+
+@dataclass(frozen=True)
 class MarketProviderEvent:
     """One provider observation waiting for owner-thread Hub publication.
 
@@ -201,5 +287,6 @@ __all__ = [
     "MARKET_EVENT_SCHEMA_VERSION",
     "MarketInstrumentKey",
     "MarketProviderEvent",
+    "MarketSourceDescriptor",
     "MarketSubscriptionKey",
 ]
