@@ -15,11 +15,12 @@ __all__ = [
 
 _ADAPTER_IMPORTS = {
     "BinanceGatewayAdapter": "bt_api_binance.gateway.adapter",
-    "CtpGatewayAdapter": "bt_api_ctp.gateway.adapter",
     "IbWebGatewayAdapter": "bt_api_ib_web.gateway.adapter",
     "Mt5GatewayAdapter": "bt_api_mt5.gateway.adapter",
     "OkxGatewayAdapter": "bt_api_okx.gateway.adapter",
 }
+
+_RETIRED_ADAPTERS = frozenset({"CtpGatewayAdapter"})
 
 
 class NoopGatewayAdapter(BaseGatewayAdapter):
@@ -31,6 +32,8 @@ def __getattr__(name: str):
         return BaseGatewayAdapter
     if name == "PluginGatewayAdapter":
         return PluginGatewayAdapter
+    if name in _RETIRED_ADAPTERS:
+        raise AttributeError(name)
     module_name = _ADAPTER_IMPORTS.get(name)
     if module_name is None:
         if name.endswith("GatewayAdapter"):
