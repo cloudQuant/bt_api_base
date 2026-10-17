@@ -16,10 +16,11 @@ __all__ = [
 _ADAPTER_IMPORTS = {
     "IbWebGatewayAdapter": "bt_api_ib_web.gateway.adapter",
     "Mt5GatewayAdapter": "bt_api_mt5.gateway.adapter",
-    "OkxGatewayAdapter": "bt_api_okx.gateway.adapter",
 }
 
-_RETIRED_ADAPTERS = frozenset({"BinanceGatewayAdapter", "CtpGatewayAdapter"})
+_RETIRED_ADAPTERS = frozenset(
+    {"BinanceGatewayAdapter", "CtpGatewayAdapter", "OkxGatewayAdapter"}
+)
 
 
 class NoopGatewayAdapter(BaseGatewayAdapter):
