@@ -19,7 +19,7 @@ def test_installed_metadata_version_matches_runtime_version() -> None:
     assert version("bt_api_base") == bt_api_base.__version__
 
 
-def test_gateway_runtime_dependency_is_declared() -> None:
+def test_pyarrow_runtime_dependency_is_declared() -> None:
     metadata = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(
         encoding="utf-8"
     )

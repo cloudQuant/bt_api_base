@@ -33,8 +33,7 @@ bt_api_base/
 │   ├── logging_factory.py   # Structured logging setup
 │   ├── feeds/              # AbstractVenueFeed protocol & AsyncWrapperMixin
 │   ├── containers/          # Instrument, Tick, OrderBook, Bar, Order, Position, Balance...
-│   ├── gateway/            # BaseGatewayAdapter, PluginGatewayAdapter
-│   ├── plugins/             # PluginInfo, PluginLoader, PluginProtocol
+│   ├── plugins/             # PluginInfo, PluginLoader, isolated feed registration
 │   └── core/               # AsyncTaskGroup, DependencyInjection, Interfaces, Services
 ├── tests/                  # Comprehensive unit & integration tests
 └── docs/                  # API documentation
@@ -290,8 +289,7 @@ bt_api_base/
 │   ├── logging_factory.py   # 结构化日志配置
 │   ├── feeds/              # AbstractVenueFeed 协议和 AsyncWrapperMixin
 │   ├── containers/          # Instrument, Tick, OrderBook, Bar, Order, Position, Balance...
-│   ├── gateway/            # BaseGatewayAdapter, PluginGatewayAdapter
-│   ├── plugins/             # PluginInfo, PluginLoader, PluginProtocol
+│   ├── plugins/             # PluginInfo, PluginLoader, 隔离 feed 注册
 │   └── core/               # AsyncTaskGroup, DependencyInjection, Interfaces, Services
 ├── tests/                  # 综合单元测试和集成测试
 └── docs/                  # API 文档

@@ -44,8 +44,7 @@ bt_api_base/
 ├── logging_factory.py   # Structured logging setup
 ├── feeds/               # AbstractVenueFeed protocol & AsyncWrapperMixin
 ├── containers/          # Instrument, Tick, OrderBook, Bar, Order, Position, Balance...
-├── gateway/             # BaseGatewayAdapter, PluginGatewayAdapter
-├── plugins/             # PluginInfo, PluginLoader, PluginProtocol
+├── plugins/             # PluginInfo, PluginLoader, isolated feed registration
 └── core/                # AsyncTaskGroup, DependencyInjection, Interfaces, Services
 ```
 
@@ -125,7 +124,7 @@ def fetch_exchange_info():
 - [Config Loader](api/config_loader.md) — Pydantic YAML validation
 - [Feeds](api/feeds.md) — AbstractVenueFeed protocol
 - [Containers](api/containers.md) — Data containers
-- [Gateway](api/gateway.md) — Gateway adapters
+- [Gateway migration boundary](api/gateway.md) — Retired Base gateway package
 - [Plugins](api/plugins.md) — Plugin system
 
 ## Supported Exchange Plugins
@@ -205,7 +204,7 @@ feed = ExchangeRegistry.create_feed("BINANCE___SPOT", data_queue)
 - [配置加载器](api/config_loader.md) — Pydantic YAML 验证
 - [Feeds](api/feeds.md) — AbstractVenueFeed 协议
 - [容器](api/containers.md) — 数据容器
-- [网关](api/gateway.md) — 网关适配器
+- [网关迁移边界](api/gateway.md) — 已退役的 Base 网关包
 - [插件](api/plugins.md) — 插件系统
 
 ### 在线文档
