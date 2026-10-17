@@ -13,14 +13,13 @@ __all__ = [
     "PluginGatewayAdapter",
 ]
 
-_ADAPTER_IMPORTS = {
-    "IbWebGatewayAdapter": "bt_api_ib_web.gateway.adapter",
-}
+_ADAPTER_IMPORTS = {}
 
 _RETIRED_ADAPTERS = frozenset(
     {
         "BinanceGatewayAdapter",
         "CtpGatewayAdapter",
+        "IbWebGatewayAdapter",
         "Mt5GatewayAdapter",
         "OkxGatewayAdapter",
     }
