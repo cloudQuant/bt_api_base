@@ -29,6 +29,13 @@ _UTC_TIMESTAMP_PATTERN = re.compile(
     re.ASCII,
 )
 
+# ExchangeID values supported by bt_api_ctp's account and instrument surfaces.
+# CTP's AccountKey venue is the provider account realm (for example, SimNow),
+# while each instrument retains its native exchange venue.
+_CTP_SIMNOW_INSTRUMENT_VENUES = frozenset(
+    {"CFFEX", "CZCE", "DCE", "GFEX", "INE", "SHFE"}
+)
+
 
 def _check_text(value: Any, field: str) -> str:
     if type(value) is not str:
@@ -159,6 +166,28 @@ class AccountKey:
             account_id=raw["account_id"],
             subaccount_id=raw["subaccount_id"],
         )
+
+
+def account_venue_contains_instrument_venue(
+    account_key: AccountKey, instrument_venue: str
+) -> bool:
+    """Check a row's venue against its trusted account realm.
+
+    Most providers use the same venue label for both identities. A CTP SimNow
+    account is one account realm spanning the six exchanges supported by this
+    repository's CTP collectors; those raw exchange IDs remain on instruments.
+    No other provider or account realm receives cross-venue matching.
+    """
+    if type(account_key) is not AccountKey or type(instrument_venue) is not str:
+        return False
+    if instrument_venue == account_key.venue:
+        return True
+    return (
+        account_key.provider == "ctp"
+        and account_key.venue == "simnow"
+        and account_key.environment == "simnow"
+        and instrument_venue in _CTP_SIMNOW_INSTRUMENT_VENUES
+    )
 
 
 @dataclass(frozen=True)
@@ -587,7 +616,9 @@ class AccountObservation:
             instrument = position.instrument
             if (
                 instrument.provider != self.account_key.provider
-                or instrument.venue != self.account_key.venue
+                or not account_venue_contains_instrument_venue(
+                    self.account_key, instrument.venue
+                )
                 or instrument.environment != self.account_key.environment
             ):
                 raise ValueError("position instrument does not match the account identity")
@@ -608,7 +639,9 @@ class AccountObservation:
             instrument = order.instrument
             if (
                 instrument.provider != self.account_key.provider
-                or instrument.venue != self.account_key.venue
+                or not account_venue_contains_instrument_venue(
+                    self.account_key, instrument.venue
+                )
                 or instrument.environment != self.account_key.environment
             ):
                 raise ValueError("open order instrument does not match the account identity")
@@ -704,6 +737,7 @@ class AccountObservation:
 __all__ = [
     "MAX_ACCOUNT_OBSERVATION_BYTES",
     "MAX_ACCOUNT_ROWS",
+    "account_venue_contains_instrument_venue",
     "AccountBalance",
     "AccountKey",
     "AccountOpenOrder",

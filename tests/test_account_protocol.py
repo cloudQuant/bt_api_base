@@ -21,6 +21,7 @@ from bt_api_base.account_protocol import (
     AccountPosition,
     AccountResourceKey,
     AccountValuation,
+    account_venue_contains_instrument_venue,
 )
 from bt_api_base.market_protocol import MarketInstrumentKey
 
@@ -501,6 +502,85 @@ def test_position_instrument_must_match_account_and_resource(
 ) -> None:
     with pytest.raises(ValueError):
         _observation(positions=(_position(instrument=instrument),))
+
+
+@pytest.mark.parametrize("exchange", ["CFFEX", "CZCE", "DCE", "GFEX", "INE", "SHFE"])
+def test_ctp_simnow_account_realm_accepts_only_supported_exchange_venues(
+    exchange: str,
+) -> None:
+    account = _account(provider="ctp", venue="simnow", environment="simnow")
+
+    assert account_venue_contains_instrument_venue(account, exchange)
+
+
+def test_account_venue_matching_is_provider_and_environment_bounded() -> None:
+    simnow = _account(provider="ctp", venue="simnow", environment="simnow")
+    other_ctp_realm = replace(simnow, environment="live")
+    other_provider = replace(simnow, provider="other")
+    ordinary = _account()
+
+    assert account_venue_contains_instrument_venue(ordinary, ordinary.venue)
+    assert not account_venue_contains_instrument_venue(ordinary, "SHFE")
+    assert not account_venue_contains_instrument_venue(simnow, "UNLISTED")
+    assert not account_venue_contains_instrument_venue(other_ctp_realm, "SHFE")
+    assert not account_venue_contains_instrument_venue(other_provider, "SHFE")
+
+
+def test_simnow_observation_preserves_multiple_raw_exchange_venues() -> None:
+    account = _account(provider="ctp", venue="simnow", environment="simnow")
+    resource = _resource()
+    positions = (
+        _position(
+            account=account,
+            resource=resource,
+            instrument=_instrument(account, venue="SHFE"),
+            side="long",
+            quantity="2.500",
+        ),
+        _position(
+            account=account,
+            resource=resource,
+            instrument=_instrument(account, venue="INE"),
+            side="short",
+            quantity="1.250",
+        ),
+    )
+    order = _open_order(resource, instrument=_instrument(account, venue="DCE"))
+
+    observation = _observation(
+        account_key=account,
+        coverage=(resource,),
+        balances=(_balance(resource),),
+        positions=positions,
+        open_orders=(order,),
+        open_orders_complete=True,
+    )
+
+    assert tuple(item.instrument.venue for item in observation.positions) == (
+        "SHFE",
+        "INE",
+    )
+    assert observation.open_orders is not None
+    assert observation.open_orders[0].instrument.venue == "DCE"
+
+
+@pytest.mark.parametrize("row_kind", ["position", "open_order"])
+def test_simnow_observation_rejects_unlisted_exchange_venue(row_kind: str) -> None:
+    account = _account(provider="ctp", venue="simnow", environment="simnow")
+    resource = _resource()
+    instrument = _instrument(account, venue="UNLISTED")
+    updates = (
+        {"positions": (_position(account, resource, instrument=instrument),)}
+        if row_kind == "position"
+        else {
+            "positions": (),
+            "open_orders": (_open_order(resource, instrument=instrument),),
+            "open_orders_complete": True,
+        }
+    )
+
+    with pytest.raises(ValueError, match="does not match the account identity"):
+        _observation(account_key=account, **updates)
 
 
 def test_exact_dict_shapes_reject_missing_extra_and_wrong_nested_fields() -> None:
