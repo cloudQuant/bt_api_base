@@ -16,6 +16,12 @@
 
 This package is the **core runtime dependency** for every `bt_api_xx` exchange plugin. It abstracts away the complexity of multi-exchange integration, letting plugin authors focus purely on exchange-specific API semantics.
 
+### Role in the trading-system architecture
+
+`bt_api_base` supplies reusable, provider-neutral contracts and shared primitives to the SDK packages. It defines common data shapes and interfaces; it does not establish that supplied account or provider facts are trusted or authorize a live order. Those authorities come from the trusted runtime composition and the component that owns each fact.
+
+[Trading system architecture overview](https://github.com/cloudQuant/backtrader/blob/dev/docs/TRADING_SYSTEM_ARCHITECTURE.md).
+
 ### Architecture
 
 ```
@@ -271,6 +277,12 @@ MIT License - see [LICENSE](LICENSE) for details.
 `bt_api_base` 是 [bt_api](https://github.com/cloudQuant/bt_api_py) 插件生态系统的**标准共享基础包**。它为所有交易所插件（Binance、OKX、HTX、CTP、Interactive Brokers 等）提供标准化的基础依赖，让插件作者无需从主应用包导入，即可获得所有核心功能。
 
 这个包是**每个 `bt_api_xx` 交易所插件的核心运行时依赖**。它将多交易所集成的复杂性抽象化，让插件作者专注于交易所特定的 API 语义。
+
+### 本项目在交易系统架构中的职责
+
+`bt_api_base` 为 SDK 子包提供可复用、provider-neutral 的公共契约和基础组件，定义通用数据结构与接口；它本身不验证外部账户或行情事实的可信性，也不授权实盘订单。可信事实与运行权限由受信运行时组装和相应权威组件负责。
+
+[交易系统架构总览](https://github.com/cloudQuant/backtrader/blob/dev/docs/TRADING_SYSTEM_ARCHITECTURE.md)。
 
 ### 架构
 
