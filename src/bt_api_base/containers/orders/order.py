@@ -51,6 +51,8 @@ class OrderStatus(Enum):
             "EXPIRED": cls.EXPIRED,
             "EXPIRED_IN_MATCH": cls.EXPIRED_IN_MATCH,
             "mmp_canceled": cls.MMP_CANCELED,
+            "UNKNOWN": cls.UNKNOWN,
+            "unknown": cls.UNKNOWN,
         }
 
     @classmethod
