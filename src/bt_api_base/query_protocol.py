@@ -39,6 +39,11 @@ MAX_QUERY_JSON_DEPTH = 32
 STANDARD_QUERY_FAMILIES = frozenset(
     {
         "account",
+        "futures_catalog",
+        "futures_depth",
+        "futures_product_universe",
+        "futures_quotes",
+        "futures_session",
         "instruments",
         "open_orders",
         "positions",
@@ -53,15 +58,29 @@ STANDARD_QUERY_FILTER_KEYS = frozenset(
         "currency",
         "end_time",
         "exchange",
+        "contract_kinds",
+        "depth_levels",
+        "required_depth_volume_unit",
+        "environment",
+        "include_depth",
         "instrument_id",
+        "instruments",
         "margin_pool",
         "product_id",
+        "products",
         "product_type",
         "provider_order_id",
+        "require_active_session",
+        "required_open_interest_unit",
+        "required_quote_fields",
+        "required_volume_unit",
+        "required_volume_semantics",
         "side",
         "start_time",
         "status",
         "symbol",
+        "trading_day",
+        "venues",
     }
 )
 
@@ -242,6 +261,33 @@ def _validate_family_records(
         "open_orders": AccountOpenOrder.from_dict,
         "instruments": MarketInstrumentKey.from_dict,
     }
+    if family in {
+        "futures_catalog",
+        "futures_depth",
+        "futures_product_universe",
+        "futures_quotes",
+        "futures_session",
+    }:
+        # Import only for the futures families. This avoids loading the
+        # domain DTO module for ordinary account/order query snapshots while
+        # still rejecting arbitrary JSON extension rows.
+        from bt_api_base.futures_market_protocol import (
+            FuturesCatalogRecord,
+            FuturesDepthRecord,
+            FuturesProductKey,
+            FuturesQuoteRecord,
+            FuturesSessionRecord,
+        )
+
+        validators.update(
+            {
+                "futures_catalog": FuturesCatalogRecord.from_dict,
+                "futures_depth": FuturesDepthRecord.from_dict,
+                "futures_product_universe": FuturesProductKey.from_dict,
+                "futures_quotes": FuturesQuoteRecord.from_dict,
+                "futures_session": FuturesSessionRecord.from_dict,
+            }
+        )
     validator = validators.get(family)
     if validator is None:
         if records:
@@ -319,13 +365,12 @@ class QuerySnapshot:
     """Immutable semantic projection of one query result.
 
     Records use the published neutral family schema and contain JSON only.
-    The current schemas are AccountBalance for account, AccountPosition for
-    positions, AccountOpenOrder for open_orders, and MarketInstrumentKey for
-    instruments. Extension families have no shared row schema yet, so they
-    cannot carry records or claim COMPLETE. Provider-native diagnostics and
-    mutable SDK objects remain provider-owned and may be associated privately
-    with snapshot_ref. A complete native response does not by itself prove that
-    the requested account or resource scope is complete.
+    In addition to account/order/position/instrument rows, futures session,
+    catalog, quote, and depth rows use the canonical DTOs in
+    ``futures_market_protocol``. Provider-native diagnostics and mutable SDK
+    objects remain provider-owned and may be associated privately with
+    snapshot_ref. A complete native response does not by itself prove that the
+    requested account or resource scope is complete.
     """
 
     request: QueryRequest
