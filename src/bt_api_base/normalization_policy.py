@@ -42,6 +42,21 @@ class LegacyNormalizationPolicy:
     instrument_contract_multiplier_field = "ctMult"
     instrument_linear_type_field = "ctType"
     instrument_perpetual_type_field = "contractType"
+    balance_nested_fields = ("details", "assets", "balances")
+    balance_fields = MappingProxyType({
+        "currency": (
+            "CurrencyID", "currency", "ccy", "asset", "account_type", "symbol_name", "symbol",
+        ),
+        "cash": (
+            "available_cash", "availEq", "availBal", "availableBalance", "available", "cash",
+            "available_margin", "Available", "margin_free", "free_margin", "free",
+        ),
+        "value": ("Balance", "equity", "eq", "marginBalance", "value"),
+        "wallet": ("balance", "walletBalance", "cashBal", "margin", "total_wallet_balance"),
+        "unrealized": ("crossUnPnl", "unrealizedProfit", "unrealized_profit"),
+        "margin_used": ("margin_used", "used_margin", "initialMargin", "CurrMargin"),
+        "account_id": ("account_id", "AccountID"),
+    })
 
     def order_average(self, row, average, *, pick, number):
         return average
