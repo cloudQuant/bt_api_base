@@ -72,6 +72,34 @@ class LegacyNormalizationPolicy:
         "multiplier": ("multiplier", "contract_size", "volume_multiple", "VolumeMultiple"),
         "exchange_id": ("exchange_id", "ExchangeID"),
     })
+    order_fields = MappingProxyType({
+        "order_id": ("order_id", "external_order_id", "ordId", "orderId", "order_sys_id", "OrderSysID"),
+        "client_id": ("client_order_id", "clOrdId", "clientOrderId", "order_ref", "OrderRef"),
+        "filled": ("filled", "filled_quantity", "executed_qty", "accFillSz", "executedQty", "VolumeTraded"),
+        "average": ("avg_price", "average_price", "order_avg_price", "avgPx", "avgPrice"),
+        "cum_quote": ("cum_quote", "cumQuote", "cummulativeQuoteQty"),
+        "size": ("quantity", "size", "order_size", "sz", "origQty", "VolumeTotalOriginal"),
+        "order_ref": ("order_ref", "OrderRef"),
+        "exchange_id": ("exchange_id", "ExchangeID"),
+        "front_id": ("front_id", "FrontID"),
+        "session_id": ("session_id", "SessionID"),
+        "account_id": ("account_id", "AccountID", "InvestorID"),
+        "trading_day": ("trading_day", "TradingDay"),
+        "fee_currency": ("fee_currency", "feeCcy", "commissionAsset"),
+        "commission_currency": ("commission_currency", "fee_currency", "feeCcy", "commissionAsset"),
+    })
+    trade_fields = MappingProxyType({
+        "trade_id": ("trade_id", "fill_id", "deal_id", "tradeId", "id", "TradeID"),
+        "order_id": ("order_id", "external_order_id", "orderId", "ordId", "OrderSysID"),
+        "client_id": ("client_order_id", "clOrdId", "OrderRef"),
+        "size": ("quantity", "size", "trade_volume", "qty", "fillSz", "volume", "Volume"),
+        "price": ("trade_price", "price", "fillPx", "Price"),
+        "exchange_id": ("exchange_id", "ExchangeID"),
+        "account_id": ("account_id", "AccountID", "InvestorID"),
+        "trading_day": ("trading_day", "TradingDay"),
+        "fee_currency": ("fee_currency", "trade_fee_symbol", "commissionAsset", "feeCcy"),
+    })
+    signed_fee_currency_field = "feeCcy"
 
     def order_average(self, row, average, *, pick, number):
         return average
