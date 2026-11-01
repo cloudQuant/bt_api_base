@@ -1,5 +1,7 @@
 """Shared legacy defaults for explicitly declared provider normalization."""
 
+from types import MappingProxyType
+
 
 class LegacyNormalizationPolicy:
     """Defaults do not establish provider, account or execution authority."""
@@ -23,6 +25,23 @@ class LegacyNormalizationPolicy:
     tick_price_fields = ("price", "last_price", "last", "LastPrice")
     tick_volume_fields = ("volume", "last_volume", "Volume")
     tick_cumulative_fields = ("cum_volume", "cumulative_volume", "Volume")
+    instrument_fields = MappingProxyType({
+        "multiplier": ("multiplier", "contract_size", "VolumeMultiple", "ctVal"),
+        "step": ("lot_size", "order_size_step", "volume_step", "lotSz", "stepSize"),
+        "min_size": ("min_size", "volume_min", "minSz", "MinLimitOrderVolume"),
+        "max_size": ("max_size", "volume_max", "maxLmtSz", "MaxLimitOrderVolume"),
+        "tick_size": ("tick_size", "price_tick", "tickSz", "PriceTick"),
+        "settlement_currency": ("settlement_currency", "settleCcy", "marginAsset", "currency"),
+        "base_currency": ("base_currency", "baseAsset", "ctValCcy", "baseCcy"),
+        "margin_rate": ("margin_rate", "LongMarginRatio", "long_margin_rate"),
+        "commission_rate": ("commission_rate", "taker_commission_rate"),
+        "exchange_id": ("exchange_id", "ExchangeID"),
+    })
+    instrument_uses_filters = True
+    instrument_contract_value_field = "ctVal"
+    instrument_contract_multiplier_field = "ctMult"
+    instrument_linear_type_field = "ctType"
+    instrument_perpetual_type_field = "contractType"
 
     def order_average(self, row, average, *, pick, number):
         return average
