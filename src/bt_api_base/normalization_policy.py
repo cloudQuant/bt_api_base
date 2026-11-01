@@ -40,6 +40,14 @@ class LegacyNormalizationPolicy:
     tick_price_fields = ("price", "last_price", "last", "LastPrice")
     tick_volume_fields = ("volume", "last_volume", "Volume")
     tick_cumulative_fields = ("cum_volume", "cumulative_volume", "Volume")
+    instrument_spec_fields = MappingProxyType({
+        "symbol": ("symbol", "symbol_name", "instId"),
+        "base_currency": ("base_currency", "baseAsset", "baseCcy", "ctValCcy"),
+        "quote_currency": ("quote_currency", "quoteAsset", "quoteCcy", "settleCcy", "marginAsset"),
+        "asset_type": ("asset_type", "instType"),
+        "contract_type": ("contract_type", "contractType", "instType"),
+    })
+    instrument_spec_linear_type_field = "ctType"
     instrument_fields = MappingProxyType({
         "multiplier": ("multiplier", "contract_size", "VolumeMultiple", "ctVal"),
         "step": ("lot_size", "order_size_step", "volume_step", "lotSz", "stepSize"),
