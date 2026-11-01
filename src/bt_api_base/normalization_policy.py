@@ -12,6 +12,21 @@ class LegacyNormalizationPolicy:
     funding_time_fields = ("nextFundingTime", "fundingTime")
     position_mode_ack_code = "200"
     trade_authority = False
+    order_statuses = MappingProxyType({
+        "new": "accepted", "open": "accepted", "live": "accepted", "working": "accepted",
+        "submitted": "submitted", "accepted": "accepted", "pending": "submitted",
+        "partial": "partial", "partially_filled": "partial", "partial_filled": "partial",
+        "filled": "completed", "completed": "completed", "all_traded": "completed",
+        "cancelled": "canceled", "canceled": "canceled", "mmp_canceled": "canceled",
+        "expired": "expired", "expired_in_match": "expired", "rejected": "rejected",
+        "unknown": "unknown", "local_pending": "submitted",
+    })
+    position_mode_boolean_field = "dualSidePosition"
+    position_mode_fields = ("position_mode", "positionMode", "posMode")
+    position_mode_aliases = MappingProxyType({
+        "net_mode": "net", "oneway": "net", "one_way": "net",
+        "long_short_mode": "dual_side", "hedge": "dual_side", "hedge_mode": "dual_side",
+    })
     event_id_fields = ("event_id", "trade_id", "tradeId", "fill_id", "order_id", "orderId", "ordId")
     event_audit_fields = (
         "sequence", "sequence_id", "previous_sequence", "prevSeqId", "pu", "U", "u",
