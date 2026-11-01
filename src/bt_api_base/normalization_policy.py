@@ -57,6 +57,21 @@ class LegacyNormalizationPolicy:
         "margin_used": ("margin_used", "used_margin", "initialMargin", "CurrMargin"),
         "account_id": ("account_id", "AccountID"),
     })
+    position_fields = MappingProxyType({
+        "quantity": (
+            "quantity", "position_volume", "volume", "size", "pos", "positionAmt", "Position",
+            "trade_volume",
+        ),
+        "side": (
+            "position_side", "direction", "position_direction", "posSide", "positionSide", "side",
+        ),
+        "position_id": ("position_id", "ticket"),
+        "price": ("average_price", "avg_price", "price", "avgPx", "entryPrice", "price_open"),
+        "today": ("today", "today_position", "today_volume", "TodayPosition"),
+        "yesterday": ("yesterday", "yesterday_position", "yd_position", "YdPosition"),
+        "multiplier": ("multiplier", "contract_size", "volume_multiple", "VolumeMultiple"),
+        "exchange_id": ("exchange_id", "ExchangeID"),
+    })
 
     def order_average(self, row, average, *, pick, number):
         return average
