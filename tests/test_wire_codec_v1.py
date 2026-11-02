@@ -343,8 +343,61 @@ def test_codec_backend_reports_the_active_implementation():
     backend = codec_backend()
     assert backend in {"c", "python"}
     try:
-        import msgpack._cmsgpack  # noqa: F401
+        import msgpack._cmsgpack
     except ImportError:
         assert backend == "python"
     else:
         assert backend == "c"
+
+
+# --- fill facts (managed_paper_fill.v2) ------------------------------------
+
+from bt_api_base.paper_fill_protocol import MANAGED_PAPER_FILL_V2_FIELDS
+
+
+def _fill(**overrides):
+    fill = {name: f"v-{name}" for name in MANAGED_PAPER_FILL_V2_FIELDS}
+    fill.update(
+        schema="managed_paper_fill.v2",
+        match_time_ns=1_700_000_000_000_000_000,
+        event_sequence=7,
+        quote_cursor=3,
+        quantity="1.250",
+        price="10.02",
+        commission="0.0125",
+    )
+    fill.update(overrides)
+    return fill
+
+
+def test_fill_fact_round_trip_is_frozen_and_canonical():
+    decoded = decode_message(encode_message("fill", _fill(), stream=STREAM))
+    assert decoded.kind == "fill"
+    payload = decoded.payload
+    assert set(payload) == MANAGED_PAPER_FILL_V2_FIELDS
+    assert payload["quantity"] == "1.25"  # canonical decimal lexeme
+    assert payload["event_sequence"] == 7
+    with pytest.raises(TypeError):
+        payload["quantity"] = "2"  # read-only view shared by consumers
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [{"extra": "x"}, {"schema": "managed_paper_fill.v1"}],
+    ids=["extra-field", "other-schema"],
+)
+def test_fill_fact_shape_is_the_shared_contract(overrides):
+    with pytest.raises(WireCodecError):
+        encode_message("fill", _fill(**overrides), stream=STREAM)
+
+
+def test_fill_fact_rejects_bad_values_on_decode():
+    raw = msgpack.unpackb(encode_message("fill", _fill(), stream=STREAM), raw=False)
+    for name, value in (("price", "1.50"), ("quantity", "-1"), ("event_sequence", "7"), ("fill_id", "")):
+        bad = dict(raw, data=dict(raw["data"], **{name: value}))
+        with pytest.raises(WireCodecError):
+            decode_message(_raw(bad))
+
+
+def test_schema_digest_covers_the_fill_contract():
+    assert len(schema_digest()) == 64

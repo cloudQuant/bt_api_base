@@ -1,4 +1,4 @@
-"""Versioned MessagePack wire contract v1 for cross-process market data.
+"""Versioned MessagePack wire contract v1 for cross-process market data and fill facts.
 
 Iteration 60, step 60.08. The Gateway path encodes the Base neutral
 containers once on the publishing side and decodes them once on each
@@ -39,6 +39,7 @@ import json
 import re
 from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
+from types import MappingProxyType
 from typing import Any
 
 from bt_api_base.market_history_protocol import MarketBar
@@ -47,6 +48,10 @@ from bt_api_base.market_tick_protocol import (
     MarketClockQuality,
     MarketFreshnessStatus,
     MarketTickPayload,
+)
+from bt_api_base.paper_fill_protocol import (
+    MANAGED_PAPER_FILL_V2_FIELDS,
+    MANAGED_PAPER_FILL_V2_SCHEMA,
 )
 
 __all__ = [
@@ -247,9 +252,48 @@ def _decode_bar(data: Mapping[str, Any]) -> MarketBar:
     return MarketBar(**data)
 
 
+_FILL_DECIMALS = ("quantity", "price", "commission")
+_FILL_INTEGERS = ("match_time_ns", "event_sequence", "quote_cursor")
+
+
+def _encode_fill(payload: Mapping[str, Any]) -> dict[str, Any]:
+    if set(payload) != MANAGED_PAPER_FILL_V2_FIELDS:
+        raise WireCodecError("WIRE_FIELD_SET_INVALID")
+    if payload["schema"] != MANAGED_PAPER_FILL_V2_SCHEMA:
+        raise WireCodecError("WIRE_SCHEMA_UNSUPPORTED")
+    data = dict(payload)
+    for name in _FILL_DECIMALS:
+        data[name] = canonical_decimal(Decimal(data[name]) if type(data[name]) is str else data[name])
+    return data
+
+
+def _decode_fill(data: Mapping[str, Any]) -> Mapping[str, Any]:
+    if set(data) != MANAGED_PAPER_FILL_V2_FIELDS:
+        raise WireCodecError("WIRE_FIELD_SET_INVALID")
+    if data["schema"] != MANAGED_PAPER_FILL_V2_SCHEMA:
+        raise WireCodecError("WIRE_SCHEMA_UNSUPPORTED")
+    for name in _FILL_DECIMALS:
+        if parse_decimal(data[name]) < 0:
+            raise WireCodecError("WIRE_DECIMAL_INVALID")
+    for name in MANAGED_PAPER_FILL_V2_FIELDS:
+        value = data[name]
+        if name in _FILL_INTEGERS:
+            if type(value) is not int or value < 0:
+                raise WireCodecError("WIRE_VALUE_INVALID")
+        elif type(value) is not str or not value:
+            raise WireCodecError("WIRE_VALUE_INVALID")
+    # Frozen view: received fill facts are shared read-only (INV-11).
+    return MappingProxyType(dict(data))
+
+
+class _FillFact:
+    """Kind marker: encode a ``managed_paper_fill.v2`` mapping."""
+
+
 _KINDS = {
     "tick": (MarketTickPayload, _encode_tick, _decode_tick),
     "bar": (MarketBar, _encode_bar, _decode_bar),
+    "fill": (_FillFact, _encode_fill, _decode_fill),
 }
 
 
@@ -272,6 +316,12 @@ def schema_digest() -> str:
                 "enums": {k: [m.value for m in v] for k, v in sorted(_TICK_ENUMS.items())},
             },
             "bar": {"fields": list(_BAR_FIELDS)},
+            "fill": {
+                "schema": MANAGED_PAPER_FILL_V2_SCHEMA,
+                "fields": sorted(MANAGED_PAPER_FILL_V2_FIELDS),
+                "decimals": list(_FILL_DECIMALS),
+                "integers": list(_FILL_INTEGERS),
+            },
         },
     }
     blob = json.dumps(registry, sort_keys=True, separators=(",", ":")).encode()
@@ -334,7 +384,12 @@ def encode_message(
     """Encode one frozen Base container into a v1 MessagePack message."""
 
     entry = _KINDS.get(kind)
-    if entry is None or type(payload) is not entry[0]:
+    if entry is None:
+        raise WireCodecError("WIRE_KIND_INVALID")
+    if entry[0] is _FillFact:
+        if not isinstance(payload, Mapping):
+            raise WireCodecError("WIRE_KIND_INVALID")
+    elif type(payload) is not entry[0]:
         raise WireCodecError("WIRE_KIND_INVALID")
     if type(stream) is not StreamPosition:
         raise WireCodecError("WIRE_STREAM_INVALID")
