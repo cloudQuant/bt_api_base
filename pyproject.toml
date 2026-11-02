@@ -9,6 +9,7 @@ description = "Shared base abstractions for bt_api plugins"
 readme = "README.md"
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -21,7 +22,7 @@ classifiers = [
     "Operating System :: MacOS",
 ]
 license = {text = "MIT"}
-requires-python = ">=3.9"
+requires-python = ">=3.8"
 authors = [
     {name = "cloudQuant", email = "yunjinqi@gmail.com"},
 ]

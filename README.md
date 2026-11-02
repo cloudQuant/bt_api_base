@@ -273,7 +273,7 @@ pip install -e ".[dev]"
 
 ### Requirements
 
-- Python 3.9+
+- Declared minimum Python 3.8; current dependency constraints and some modules are incompatible with 3.8 and require follow-up.
 - pydantic >= 2.0
 - numpy >= 1.26
 - requests >= 2.31
@@ -534,7 +534,7 @@ pip install -e ".[dev]"
 
 ### 系统要求
 
-- Python 3.9+
+- Declared minimum Python 3.8; current dependency constraints and some modules are incompatible with 3.8 and require follow-up.
 - pydantic >= 2.0
 - numpy >= 1.26
 - requests >= 2.31
