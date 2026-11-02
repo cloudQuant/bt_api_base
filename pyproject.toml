@@ -48,6 +48,9 @@ dependencies = [
 
 [project.optional-dependencies]
 spdlog = ["spdlog>=2.0.0"]
+# MessagePack wire contract v1 (bt_api_base.wire_codec_v1). Version 1.1+ ships
+# C-extension wheels; the pure-Python fallback is about 12x slower to decode.
+wire = ["msgpack>=1.1"]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21.0",

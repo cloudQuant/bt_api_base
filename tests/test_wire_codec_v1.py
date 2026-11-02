@@ -335,3 +335,16 @@ def test_importing_the_contract_does_not_import_msgpack():
     )
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert result.stdout.strip() == "False", result.stderr
+
+
+def test_codec_backend_reports_the_active_implementation():
+    from bt_api_base.wire_codec_v1 import codec_backend
+
+    backend = codec_backend()
+    assert backend in {"c", "python"}
+    try:
+        import msgpack._cmsgpack  # noqa: F401
+    except ImportError:
+        assert backend == "python"
+    else:
+        assert backend == "c"

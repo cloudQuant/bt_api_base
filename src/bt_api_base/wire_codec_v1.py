@@ -58,6 +58,7 @@ __all__ = [
     "WireCodecError",
     "WireMessageV1",
     "canonical_decimal",
+    "codec_backend",
     "DEFAULT_DECIMAL_FIELDS",
     "command_fingerprint",
     "decode_message",
@@ -282,6 +283,19 @@ def schema_digest() -> str:
 # ---------------------------------------------------------------------------
 
 
+def codec_backend() -> str:
+    """Return ``"c"`` when msgpack's C extension is active, else ``"python"``.
+
+    Wire contract v1 is only a performance improvement over JSON with the C
+    extension (iteration 60.10 measurement); deployments should check this.
+    """
+    try:
+        from msgpack import _cmsgpack  # noqa: F401
+    except ImportError:
+        return "python"
+    return "c"
+
+
 def _msgpack() -> Any:
     try:
         import msgpack
@@ -359,22 +373,40 @@ def _reject_ext(code: int, data: bytes) -> Any:
     raise WireCodecError("WIRE_EXTENSION_TYPE_INVALID")
 
 
-def _check_values(value: Any, depth: int = 0) -> None:
-    if depth > MAX_DEPTH:
-        raise WireCodecError("WIRE_DEPTH_EXCEEDED")
-    if isinstance(value, dict):
-        for item in value.values():
-            _check_values(item, depth + 1)
-    elif isinstance(value, list):
-        for item in value:
-            _check_values(item, depth + 1)
-    elif isinstance(value, float):
-        raise WireCodecError("WIRE_FLOAT_FORBIDDEN")
-    elif isinstance(value, int) and not isinstance(value, bool):
-        if not _INT64_MIN <= value <= _INT64_MAX:
-            raise WireCodecError("WIRE_INTEGER_RANGE")
-    elif isinstance(value, (bytes, bytearray)):
-        raise WireCodecError("WIRE_VALUE_INVALID")
+_PLAIN_SCALARS = frozenset({str, bool, type(None)})
+
+
+def _check_values(root: Any) -> None:
+    """Reject floats, binary, out-of-range integers and over-deep nesting.
+
+    Iterative with a fast path for the common scalar types: this check runs
+    on every received message, so it avoids per-value recursion.
+    """
+    stack = [(root, 0)]
+    pop = stack.pop
+    push = stack.append
+    while stack:
+        value, depth = pop()
+        if depth > MAX_DEPTH:
+            raise WireCodecError("WIRE_DEPTH_EXCEEDED")
+        kind = type(value)
+        if kind in _PLAIN_SCALARS:
+            continue
+        if kind is int:
+            if not _INT64_MIN <= value <= _INT64_MAX:
+                raise WireCodecError("WIRE_INTEGER_RANGE")
+        elif kind is dict:
+            child = depth + 1
+            for item in value.values():
+                push((item, child))
+        elif kind is list:
+            child = depth + 1
+            for item in value:
+                push((item, child))
+        elif kind is float:
+            raise WireCodecError("WIRE_FLOAT_FORBIDDEN")
+        else:
+            raise WireCodecError("WIRE_VALUE_INVALID")
 
 
 def decode_message(
