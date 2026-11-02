@@ -13,7 +13,18 @@ from math import isfinite
 from types import MappingProxyType
 from typing import Any, Optional, Protocol, Union
 
-from bt_api_base.account_protocol import AccountBalance, AccountOpenOrder, AccountPosition
+from bt_api_base.account_protocol import (
+    AccountBalance,
+    AccountOpenOrder,
+    AccountPosition,
+    AccountValuation,
+)
+from bt_api_base.execution_query_protocol import (
+    CommissionRateRecord,
+    ExecutionOrderRecord,
+    ExecutionTradeRecord,
+    MarginRateRecord,
+)
 from bt_api_base.market_protocol import MarketInstrumentKey
 from bt_api_base.service_protocol import MAX_REFERENCE_BYTES
 
@@ -39,14 +50,19 @@ MAX_QUERY_JSON_DEPTH = 32
 STANDARD_QUERY_FAMILIES = frozenset(
     {
         "account",
+        "account_valuation",
         "futures_catalog",
         "futures_depth",
         "futures_product_universe",
         "futures_quotes",
         "futures_session",
         "instruments",
+        "orders",
         "open_orders",
         "positions",
+        "trades",
+        "commission_rates",
+        "margin_rates",
     }
 )
 
@@ -63,6 +79,7 @@ STANDARD_QUERY_FILTER_KEYS = frozenset(
         "required_depth_volume_unit",
         "environment",
         "include_depth",
+        "hedge_class",
         "instrument_id",
         "instruments",
         "margin_pool",
@@ -257,9 +274,14 @@ def _validate_family_records(
     """Validate records against the currently published neutral family schemas."""
     validators = {
         "account": AccountBalance.from_dict,
+        "account_valuation": AccountValuation.from_dict,
+        "orders": ExecutionOrderRecord.from_dict,
         "positions": AccountPosition.from_dict,
         "open_orders": AccountOpenOrder.from_dict,
         "instruments": MarketInstrumentKey.from_dict,
+        "trades": ExecutionTradeRecord.from_dict,
+        "commission_rates": CommissionRateRecord.from_dict,
+        "margin_rates": MarginRateRecord.from_dict,
     }
     if family in {
         "futures_catalog",
@@ -365,12 +387,12 @@ class QuerySnapshot:
     """Immutable semantic projection of one query result.
 
     Records use the published neutral family schema and contain JSON only.
-    In addition to account/order/position/instrument rows, futures session,
-    catalog, quote, and depth rows use the canonical DTOs in
-    ``futures_market_protocol``. Provider-native diagnostics and mutable SDK
-    objects remain provider-owned and may be associated privately with
-    snapshot_ref. A complete native response does not by itself prove that the
-    requested account or resource scope is complete.
+    In addition to account balance and valuation, order, position, and
+    instrument rows, futures session, catalog, quote, and depth rows use the
+    canonical DTOs in ``futures_market_protocol``. Provider-native diagnostics
+    and mutable SDK objects remain provider-owned and may be associated
+    privately with snapshot_ref. A complete native response does not by itself
+    prove that the requested account or resource scope is complete.
     """
 
     request: QueryRequest
@@ -473,7 +495,14 @@ class QuerySnapshot:
 
 @dataclass(frozen=True)
 class QueryBatchReceipt:
-    """Immutable result of one provider query batch."""
+    """Immutable result of one provider query batch.
+
+    ``session_ref`` is optional for general read batches. If present, it must
+    be the exact provider-issued account-session reference shared with the
+    selected route's :class:`AccountSessionSnapshot`; it must not be inferred
+    from ``source_ref`` or ``generation``. Account execution projections
+    require this binding and the lease digest covers it.
+    """
 
     batch_ref: str
     source_ref: Optional[str]
@@ -483,12 +512,14 @@ class QueryBatchReceipt:
     requests: tuple[QueryRequest, ...]
     snapshots: tuple[QuerySnapshot, ...]
     blockers: tuple[str, ...] = ()
+    session_ref: Optional[str] = field(default=None, repr=False)
     _receipt_digest: str = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         _check_text(self.batch_ref, "batch_ref")
         _check_optional_text(self.source_ref, "source_ref")
         _check_optional_text(self.generation, "generation")
+        _check_optional_text(self.session_ref, "session_ref")
         started_at = _check_utc_datetime(self.started_at, "started_at")
         completed_at = _check_utc_datetime(self.completed_at, "completed_at")
         if started_at > completed_at:
@@ -557,6 +588,8 @@ class QueryBatchReceipt:
             "snapshots": [_snapshot_data(snapshot) for snapshot in snapshots],
             "blockers": list(blockers),
         }
+        if self.session_ref is not None:
+            payload["session_ref"] = self.session_ref
         object.__setattr__(self, "_receipt_digest", _sha256(payload, "receipt"))
 
     @property

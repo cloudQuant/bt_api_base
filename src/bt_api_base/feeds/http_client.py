@@ -111,9 +111,16 @@ class HttpClient:
         data: Any | None = None,
         timeout: float | None = None,
         cookies: dict[str, str] | None = None,
+        _include_status: bool = False,
         **kwargs: Any,
-    ) -> dict[str, Any]:
-        """"""
+    ) -> Any:
+        """Send an HTTP request, optionally retaining raw bytes and status.
+
+        The private status mode bypasses response decoding and error-body
+        logging. Its consumer owns strict parsing and status interpretation.
+        """
+        if type(_include_status) is not bool:
+            raise TypeError("_include_status must be a bool")
         req_kwargs: dict[str, Any] = {}
         if headers:
             req_kwargs["headers"] = headers
@@ -149,7 +156,13 @@ class HttpClient:
         if failure is not None:
             raise failure
 
-        return self._process_response(response)
+        if _include_status:
+            # Private evidence callers need the exact transport status and
+            # bytes. They parse or reject the body themselves; never log or
+            # translate an account response on this path.
+            return response.content, response.status_code
+        result = self._process_response(response)
+        return result
 
     async def async_request(
         self,
@@ -210,7 +223,7 @@ class HttpClient:
         return self._process_response(response)
 
     def _process_response(self, response: httpx.Response) -> dict[str, Any]:
-        """，"""
+        """Decode a response using the standard exchange error behavior."""
         status = response.status_code
 
         # 2xx success

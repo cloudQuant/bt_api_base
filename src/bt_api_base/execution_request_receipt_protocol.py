@@ -86,6 +86,81 @@ class ExecutionCredentialRequestOpaqueRef:
         return "<ExecutionCredentialRequestOpaqueRef>"
 
 
+@runtime_checkable
+class ExecutionCredentialLineageSourcePort(Protocol):
+    """Provider feed capability for its construction-time credential lineage.
+
+    The exact marker must be created alongside the feed's immutable signer
+    binding. Returning it does not expose that binding or grant authentication;
+    the provider must compare it with the binding captured for each physical
+    request. The SDK session pins the marker when it binds the selected feed.
+    """
+
+    def execution_credential_lineage_ref(self) -> ExecutionCredentialRequestOpaqueRef:
+        """Return the exact marker paired with this feed's immutable binding."""
+        ...
+
+
+@dataclass(frozen=True, eq=False, repr=False)
+class ExecutionCredentialRequestAttemptContext:
+    """Session-owner context for one provider request attempt.
+
+    The references are identity handles only. The SDK execution-session owner
+    must issue and retain the exact object after the selected feed exposes its
+    construction-time credential-lineage marker. Providers must separately
+    prove that the marker and their exact signer capture belong to the same
+    physical request. This object is neither authentication nor a receipt.
+    """
+
+    credential_lineage_ref: ExecutionCredentialRequestOpaqueRef = field(
+        repr=False, compare=False
+    )
+    selected_route_ref: ExecutionCredentialRequestOpaqueRef = field(
+        repr=False, compare=False
+    )
+    owner_generation_ref: ExecutionCredentialRequestOpaqueRef = field(
+        repr=False, compare=False
+    )
+    owner_lease_ref: ExecutionCredentialRequestOpaqueRef = field(
+        repr=False, compare=False
+    )
+    session_generation: str = field(repr=False, compare=False)
+    fencing_epoch: int = field(repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        references = (
+            self.credential_lineage_ref,
+            self.selected_route_ref,
+            self.owner_generation_ref,
+            self.owner_lease_ref,
+        )
+        for name, reference in zip(
+            (
+                "credential_lineage_ref",
+                "selected_route_ref",
+                "owner_generation_ref",
+                "owner_lease_ref",
+            ),
+            references,
+        ):
+            _require_opaque_reference(reference, name)
+        if any(
+            left is right
+            for index, left in enumerate(references)
+            for right in references[index + 1 :]
+        ):
+            raise ValueError("attempt references must have distinct owner identities")
+        _require_text(self.session_generation, "session_generation", maximum=128)
+        if type(self.fencing_epoch) is not int or self.fencing_epoch <= 0:
+            raise ValueError("fencing_epoch must be a positive exact int")
+
+    def __reduce__(self):
+        raise TypeError("execution credential request attempts cannot be serialized")
+
+    def __repr__(self) -> str:
+        return "<ExecutionCredentialRequestAttemptContext(session-owned; validation required)>"
+
+
 def _require_opaque_reference(value: object, field_name: str) -> None:
     """Require an empty marker; issuer provenance still needs validation."""
 
@@ -335,6 +410,8 @@ class ExecutionCredentialRequestReceiptIssuerPort(Protocol):
 
 
 __all__ = [
+    "ExecutionCredentialRequestAttemptContext",
+    "ExecutionCredentialLineageSourcePort",
     "ExecutionCredentialRequestReceipt",
     "ExecutionCredentialRequestOpaqueRef",
     "ExecutionCredentialRequestReceiptIssuerPort",

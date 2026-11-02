@@ -344,12 +344,12 @@ class SettlementConfirmationReceipt:
 
 @dataclass(frozen=True)
 class SettlementConfirmationOutcome:
-    """Store-side aggregate of the SDK receipt and its exact verification.
+    """SDK-produced aggregate of a settlement receipt and exact verification.
 
     Providers return ``SettlementConfirmationReceipt`` from the write call
-    and verify that exact object separately through the SDK port. A Store may
-    assemble this neutral value only after consuming that verifier result;
-    receipt disposition alone never sets ``verified``.
+    and verify that exact object separately through the SDK port. The SDK
+    workflow assembles this neutral value only after consuming that verifier
+    result; receipt disposition alone never sets ``verified``.
     """
 
     receipt: SettlementConfirmationReceipt
@@ -407,6 +407,37 @@ class AccountSessionFacade(Protocol):
 
 
 @runtime_checkable
+class AccountSessionWorkflowFacade(Protocol):
+    """Optional SDK-owned aggregation for account session and readback facts.
+
+    Implementations bind each operation to the exact selected route, validate
+    exact neutral DTOs, and revalidate readiness evidence with an SDK-owned
+    clock and the same selected port. This read capability does not issue
+    execution authority.
+    """
+
+    def account_session_snapshot(self, exchange_name: str) -> AccountSessionSnapshot:
+        """Return one route-bound account-session observation."""
+        ...
+
+    def account_preflight(
+        self,
+        request: AccountPreflightRequest,
+    ) -> AccountPreflightSnapshot:
+        """Return readiness evidence after SDK-owned lease revalidation."""
+        ...
+
+    def verify_account_settlement(
+        self,
+        exchange_name: str,
+        *,
+        deadline: datetime,
+    ) -> SettlementVerificationReceipt:
+        """Perform a route-bound active, read-only settlement readback."""
+        ...
+
+
+@runtime_checkable
 class SettlementConfirmationPort(Protocol):
     """Separate optional write capability; never inferred from read readiness.
 
@@ -455,16 +486,42 @@ class SettlementConfirmationFacade(Protocol):
         ...
 
 
+@runtime_checkable
+class SettlementConfirmationWorkflowFacade(Protocol):
+    """Optional SDK-owned claim/confirm/verify workflow for one exact route.
+
+    This workflow keeps the one-shot claim and the post-command uncertainty
+    handling inside the SDK. The caller supplies its original opaque SDK
+    authorization unchanged; this selector does not mint or infer authority.
+    Errors before a claim is returned may reject the operation. Once a claim
+    has been returned, implementations must return a typed unknown or
+    unverified outcome for any uncertain confirmation or verification result
+    and must never retry the command.
+    """
+
+    def confirm_settlement_once(
+        self,
+        exchange_name: str,
+        request: SettlementConfirmationRequest,
+        *,
+        authorization: object,
+    ) -> SettlementConfirmationOutcome:
+        """Run exactly one authorized claim/confirm/verify sequence."""
+        ...
+
+
 __all__ = [
     "AccountPreflightRequest",
     "AccountPreflightSnapshot",
     "AccountSessionFacade",
     "AccountSessionPort",
     "AccountSessionSnapshot",
+    "AccountSessionWorkflowFacade",
     "SettlementConfirmationFacade",
     "SettlementConfirmationOutcome",
     "SettlementConfirmationPort",
     "SettlementConfirmationReceipt",
     "SettlementConfirmationRequest",
+    "SettlementConfirmationWorkflowFacade",
     "SettlementVerificationReceipt",
 ]

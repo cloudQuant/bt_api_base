@@ -12,8 +12,9 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
-from typing import Literal, Protocol, runtime_checkable
+from typing import Callable, Literal, Optional, Protocol, runtime_checkable
 
+from bt_api_base.execution_correlation_protocol import SelectedExecutionRoute
 from bt_api_base.execution_rules_protocol import ExecutionRuleDecision, ExecutionRuleRequest
 from bt_api_base.market_protocol import MarketInstrumentKey
 from bt_api_base.service_protocol import MAX_REFERENCE_BYTES
@@ -314,11 +315,34 @@ class ExecutionEconomicsPort(Protocol):
         ...
 
 
+ExecutionEconomicsProviderFactory = Callable[
+    [SelectedExecutionRoute], Optional[ExecutionEconomicsPort]
+]
+
+
+@runtime_checkable
+class ExecutionEconomicsProviderRegistryPort(Protocol):
+    """Provider-neutral exact-route registration contract.
+
+    Registration makes a factory discoverable, not its output authoritative.
+    A provider factory must return an owner only when its trusted runtime has
+    supplied the exact evidence issuer/source binding required by the route.
+    """
+
+    def register(
+        self,
+        exchange_name: str,
+        factory: ExecutionEconomicsProviderFactory,
+    ) -> None: ...
+
+
 __all__ = [
     "EconomicsStatus",
     "EconomicsRevalidationStage",
     "ExecutionEconomicsDecision",
     "ExecutionEconomicsPort",
+    "ExecutionEconomicsProviderFactory",
+    "ExecutionEconomicsProviderRegistryPort",
     "ExecutionEconomicsRequest",
     "RequirementKind",
 ]

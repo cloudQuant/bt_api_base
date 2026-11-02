@@ -25,8 +25,12 @@ __all__ = (
     "TypedOrderProviderFactory",
     "TypedOrderProviderRegistryPort",
     "OrderCorrelationIssuer",
+    "ManagedOrderObservationIssuer",
     "TypedOrderProvider",
     "VerifiedOrderAcknowledgement",
+    "DirectCorrelatedOrderExecutionPort",
+    "DirectOrderProviderFactory",
+    "DirectOrderProviderRegistryPort",
 )
 
 
@@ -234,6 +238,150 @@ class OrderCorrelationIssuer(Protocol):
         *,
         issuer_reservation: object,
     ) -> bool: ...
+
+
+@runtime_checkable
+class ManagedOrderObservationIssuer(Protocol):
+    """Durable neutral identity bridge for provider order observations.
+
+    Provider identities are supplied only as transient private input to the
+    issuer. Implementations must return stable opaque observation IDs without
+    storing or returning the native identity. A resolved managed observation
+    returns only its neutral correlation and issuer reservation; it is not a
+    cancellation claim or authorization. Unmanaged/external observations have
+    no correlation and must resolve to ``None``.
+
+    ``provider_name``, ``environment``, and ``account_ref`` bind every token
+    to the exact selected account domain. Managed bindings and resolution also
+    require the exact ledger ``scope_ref``. ``provider_identity``
+    must contain enough provider-private identity to distinguish one order or
+    trade, but implementations must not persist it or include it in errors,
+    logs, reprs, or public DTOs.
+    """
+
+    def issue_order_observation_id(
+        self,
+        provider_name: str,
+        environment: str,
+        account_ref: str,
+        provider_identity: str,
+    ) -> str: ...
+
+    def bind_order_observation(
+        self,
+        order_id: str,
+        provider_name: str,
+        environment: str,
+        account_ref: str,
+        scope_ref: str,
+        provider_identity: str,
+        correlation: OrderCorrelation,
+        *,
+        issuer_reservation: object,
+    ) -> bool: ...
+
+    def resolve_order_observation(
+        self,
+        order_id: str,
+        *,
+        provider_name: str,
+        environment: str,
+        account_ref: str,
+        scope_ref: str,
+    ) -> tuple[OrderCorrelation, object] | None: ...
+
+    def bind_provider_order_reference(
+        self,
+        provider_reference: str,
+        correlation: OrderCorrelation,
+        *,
+        issuer_reservation: object,
+        provider_name: str,
+        environment: str,
+        account_ref: str,
+        scope_ref: str,
+    ) -> bool: ...
+
+    def resolve_provider_order_reference(
+        self,
+        provider_reference: str,
+        *,
+        provider_name: str,
+        environment: str,
+        account_ref: str,
+        scope_ref: str,
+    ) -> tuple[OrderCorrelation, object] | None: ...
+
+    def issue_trade_observation_id(
+        self,
+        provider_name: str,
+        environment: str,
+        account_ref: str,
+        provider_identity: str,
+    ) -> str: ...
+
+
+@runtime_checkable
+class DirectCorrelatedOrderExecutionPort(Protocol):
+    """Provider-owned direct session for one route's correlated order writes.
+
+    The provider must bind the port to the exact selected account, environment,
+    native session and route. Issuing a correlation or constructing this port
+    does not establish authorization. The provider owns native identifiers,
+    one-shot claims, dispatch and acknowledgement evidence. An ambiguous
+    submit or cancel remains UNKNOWN and must not be automatically retried.
+    This contract does not depend on optional execution, risk or gateway
+    services, and it must not replace an explicitly selected managed route.
+    """
+
+    def prepare_order_correlation(self, exchange_name: str, symbol: str) -> OrderCorrelation: ...
+
+    def claim_correlated_order(
+        self,
+        operation: Literal["submit", "cancel"],
+        correlation: OrderCorrelation,
+        request: OrderRequestProtocol | CancelOrderRequestProtocol,
+        *,
+        authorization: object,
+    ) -> object: ...
+
+    async def submit_correlated_order(
+        self,
+        correlation: OrderCorrelation,
+        request: OrderRequestProtocol,
+        *,
+        claim: object,
+        authorization: object,
+    ) -> object: ...
+
+    async def cancel_correlated_order(
+        self,
+        correlation: OrderCorrelation,
+        request: CancelOrderRequestProtocol,
+        *,
+        claim: object,
+        authorization: object,
+    ) -> object: ...
+
+    def verify_order_response(
+        self, correlation: OrderCorrelation, response: object
+    ) -> VerifiedOrderAcknowledgement | None: ...
+
+    def verify_cancel_response(
+        self, correlation: OrderCorrelation, response: object
+    ) -> VerifiedOrderAcknowledgement | None: ...
+
+
+DirectOrderProviderFactory = Callable[
+    [SelectedExecutionRoute], DirectCorrelatedOrderExecutionPort
+]
+
+
+@runtime_checkable
+class DirectOrderProviderRegistryPort(Protocol):
+    """Register a trusted direct-order factory for one exact route."""
+
+    def register(self, exchange_name: str, factory: DirectOrderProviderFactory) -> None: ...
 
 
 class TypedOrderProvider(Protocol):

@@ -476,7 +476,13 @@ class AccountOpenOrder:
 
 @dataclass(frozen=True)
 class AccountValuation:
-    """Optional valuation explicitly reported by the provider in one currency."""
+    """Optional provider valuation in one explicit currency.
+
+    ``available_cash`` retains the provider's declared available-cash
+    semantics. It does not imply settled, transferable, or withdrawal-ready
+    cash. ``equity`` is the provider-reported equity value, not a cross-currency
+    conversion or aggregation performed by this contract.
+    """
 
     currency: str
     available_cash: str | None

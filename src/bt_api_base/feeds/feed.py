@@ -178,6 +178,8 @@ class Feed(AsyncBase, ConnectionMixin, CapabilityMixin):
         body: Any = None,
         timeout: float = 10,
         max_retries: int = 3,
+        *,
+        _include_status: bool = False,
     ) -> Any:
         """
         request http function
@@ -189,6 +191,8 @@ class Feed(AsyncBase, ConnectionMixin, CapabilityMixin):
         :param max_retries: int, max retry count for transient errors
         :return: json, http response
         """
+        if type(_include_status) is not bool:
+            raise TypeError("_include_status must be a bool")
         if headers is None:
             headers = {}
         terminal_error: RequestError | None = None
@@ -200,6 +204,7 @@ class Feed(AsyncBase, ConnectionMixin, CapabilityMixin):
                     headers=headers,
                     json_data=body,
                     timeout=timeout,
+                    _include_status=_include_status,
                 )
             except RequestFailedError as e:
                 msg = str(e)

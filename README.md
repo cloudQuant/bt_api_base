@@ -1,5 +1,27 @@
 ﻿# bt_api_base
 
+Position-mode acknowledgement codes are provider declarations: the Base default is unspecified. Binance, CTP and non-swap OKX preserve the previous `200`; OKX swap preserves `0`, and ten historical policies retain `200`. These inherited values do not prove venue capability. Third-party Base subclasses no longer receive a default; dynamic policies, packaging and behavior remain unvalidated.
+
+Binance/OKX bound read-only runtime registration and exact owner/config checks live in their providers; Base carries the SDK-injected API type, and SDK owns composition and finite error mapping. The two SDK-specific registration modules and `compose_binance_read_only_runtime` / `compose_okx_read_only_runtime` are removed. `compose_read_only_runtime` creates a new owner and differs from reusing an existing one. Entry points, thread/cleanup and behavior remain unaccepted.
+
+Execution-ledger identity format is declared per provider via `bt_api_base.execution_ledger_identity_policy`, not hard-coded venue names. The 13 built-in providers retain their prior format choices; this does not prove identity. Missing or undiscoverable declarations fail, including historical/custom providers, and successful selections are process-cached. Migration, packaging and behavior remain unaccepted. A separate provider `account_risk_source_policy` declares whether native account binding is still required for neutral risk reads. CTP remains unavailable; the other 12 retain the old branch, not proof of source. Undeclared providers fail and discovery/behavior are unaccepted.
+
+CTP managed Risk order payload construction and cancel-target matching live in `bt_api_ctp.risk_dispatch_binding`; Base declares the optional provider contract, while SDK retains evidence selection, claims and journal fencing. Target orders with a schema now require a matching provider declaration: undeclared schemas fail, a breaking change. Journal compatibility and behavior remain unvalidated.
+
+Order-status and trade-fee field candidates are selected by provider policy. All 13 providers explicitly declare order-status candidates: Binance, OKX and CTP retain their existing declarations, while the other ten each declare `status`, `order_status` and `state`; the Base legacy policy no longer declares these candidates. Trade-fee candidates remain policy-selected. A policy without declarations fails explicitly. This field ownership move does not establish native status coverage; third-party policies and behavior remain unvalidated. Placement position-mode fencing is also provider-declared: OKX/Binance retain the existing guard, other built-in routes retain the previous unguarded behavior, and undeclared routes reject placement. This breaking change does not prove venue capability.
+
+All 13 providers explicitly declare `trade_id_fields` using neutral names and native fields confirmed in their container source; Base defaults to `None` and the SDK reads the selected fields. Bybit, dYdX and Kraken declare no additional native trade-ID fields. Unconfirmed generic `id`/`tradeId` aliases are no longer assumed across venues; narrowing and additions are breaking changes. The `group_fill` provenance alias contract is separate: IDs including Gateio, HTX and MEXC still require verification and normalization does not prove them. Dynamic inputs and behavior remain unvalidated.
+
+Order-identity aliases have neutral and explicit historical contracts. The SDK rejects known aliases outside the selected provider policy; this does not establish source authenticity and remains unvalidated.
+
+Base tick trading-day and action-day defaults are `None`; CTP explicitly selects `TradingDay` and `ActionDay` alongside neutral names, while the other 12 providers explicitly select neutral names only. The former uppercase candidates for the other ten have been removed; dynamic input coverage remains unvalidated. Base order-book audit/sequence defaults exclude Binance native aliases, while the explicit historical policy retains those order-book aliases for legacy providers. Permission, position-mode, event-identity and instrument-symbol defaults are also neutral. Selected Binance/OKX/CTP aliases in balance, position, order, trade, status and mode defaults now reside in the explicit legacy policy; four dependent provider mappings were switched to that policy. Other listed static declarations retain their previous fields for the 13 built-in providers. Third-party Base subclasses change behavior and coverage remains unaccepted. The working tree defines neutral order-source fields; providers explicitly declare their native fields and aliases and select scoped v5/v6 schemas. This selection is not source attestation and remains unvalidated.
+
+The working tree builds provider-scoped candidate alias maps from neutral aliases and each provider’s declarations, using v5/v6; the v1–v4 contracts have been removed. Risk/group proofs use only v6. Bybit, dYdX and Kraken currently declare no native fill aliases and their coverage requires review. Current provider coverage and proof behavior remain unvalidated.
+
+The working-tree order provenance projection also checks source snapshot shape and digest with caller-selected schema and hashing. The caller remains responsible for source authenticity; behavior remains unvalidated.
+
+Provider policies declare any nested order-identity shape; the Base default no longer treats Binance user-stream fields as universal. Other providers and behavior remain unvalidated.
+
 [![PyPI Version](https://img.shields.io/pypi/v/bt_api_base.svg)](https://pypi.org/project/bt_api_base/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/bt_api_base.svg)](https://pypi.org/project/bt_api_base/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -18,7 +40,19 @@ This package is the **core runtime dependency** for every `bt_api_xx` exchange p
 
 ### Role in the trading-system architecture
 
+The working-tree `order_provenance_projection` projects finite source fields and a digest using SDK-selected field contracts; it does not authenticate the provider. Source and distribution remain unaccepted.
+
+The working-tree `execution_identity_projection` also compares explicit ledger order identity fields using caller-supplied provider unit resolution; it does not establish source authenticity. Behavior and distribution remain unaccepted.
+
 `bt_api_base` supplies reusable, provider-neutral contracts and shared primitives to the SDK packages. It defines common data shapes and interfaces; it does not establish that supplied account or provider facts are trusted or authorize a live order. Those authorities come from the trusted runtime composition and the component that owns each fact.
+
+`risk_dispatch_evidence` defines a provider declaration for venue-specific risk evidence validation; it provides no provider authority or Risk permit. Its source and distribution have not been validated.
+
+Neutral normalized order-observation and finite source-projection types reside in `order_observation_contracts`; the SDK normalization module imports those same types. These shapes do not establish provider truth and have not passed behavior or distribution acceptance.
+
+The working-tree legacy order-side helper accepts a full row and selects its historical aliases without inspecting provider-specific nested data. Its projector entry-point signature changed and remains unvalidated.
+
+The working-tree `logging_context` owns shared context-local log identifiers for SDK and Monitor consumers; `logging_setup` owns their shared explicit process-logging configuration. These identifiers are diagnostics, not account or authorization evidence; distribution and behavior remain unvalidated.
 
 [Trading system architecture overview](https://github.com/cloudQuant/backtrader/blob/dev/docs/TRADING_SYSTEM_ARCHITECTURE.md).
 

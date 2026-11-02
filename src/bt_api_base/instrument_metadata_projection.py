@@ -4,13 +4,7 @@
 def project_instrument_metadata(row, policy, *, pick, number):
     """Project supplied fields without asserting instrument-rule authority."""
     fields = policy.instrument_fields
-    filters = (
-        {item["filterType"]: item for item in row.get("filters", [])}
-        if policy.instrument_uses_filters
-        else {}
-    )
-    lot = filters.get("LOT_SIZE", {})
-    floor = filters.get("MIN_NOTIONAL", filters.get("NOTIONAL", {}))
+    defaults = policy.instrument_metadata_defaults(row, pick=pick)
     multiplier = number(pick(row, *fields["multiplier"]))
     value_field = policy.instrument_contract_value_field
     if (
@@ -21,7 +15,7 @@ def project_instrument_metadata(row, policy, *, pick, number):
         multiplier *= number(row.get(policy.instrument_contract_multiplier_field), 1)
     if multiplier is None:
         multiplier = policy.default_multiplier
-    step = number(pick(row, *fields["step"], default=lot.get("stepSize")))
+    step = number(pick(row, *fields["step"], default=defaults.get("quantity_step")))
     linear_type = policy.instrument_linear_type_field
     perpetual_type = policy.instrument_perpetual_type_field
     return {
@@ -29,13 +23,13 @@ def project_instrument_metadata(row, policy, *, pick, number):
         "multiplier": multiplier,
         "lot_size": step,
         "order_size_step": step,
-        "min_size": number(pick(row, *fields["min_size"], default=lot.get("minQty"))),
-        "max_size": number(pick(row, *fields["max_size"], default=lot.get("maxQty"))),
+        "min_size": number(pick(row, *fields["min_size"], default=defaults.get("min_size"))),
+        "max_size": number(pick(row, *fields["max_size"], default=defaults.get("max_size"))),
         "min_notional": number(
-            pick(row, "min_notional", default=pick(floor, "notional", "minNotional")), 0
+            pick(row, "min_notional", default=defaults.get("min_notional")), 0
         ),
         "tick_size": number(
-            pick(row, *fields["tick_size"], default=filters.get("PRICE_FILTER", {}).get("tickSize"))
+            pick(row, *fields["tick_size"], default=defaults.get("tick_size"))
         ),
         "settlement_currency": pick(row, *fields["settlement_currency"]),
         "base_currency": pick(row, *fields["base_currency"]),

@@ -11,11 +11,12 @@ alone do not prove either currency.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_EVEN, localcontext
 from typing import Literal, Protocol, runtime_checkable
 
+from bt_api_base.execution_correlation_protocol import SelectedExecutionRoute
 from bt_api_base.market_protocol import MarketInstrumentKey
 from bt_api_base.service_protocol import MAX_REFERENCE_BYTES
 
@@ -28,6 +29,7 @@ _ASSET_KINDS = frozenset({"future", "option", "unknown"})
 _RULE_STATUSES = frozenset({"available", "unavailable"})
 _DECISION_STATUSES = frozenset({"accepted", "rejected", "unavailable"})
 _CURRENCY_STATUSES = frozenset({"verified", "unavailable"})
+_HEDGE_CLASSES = frozenset({"speculation", "arbitrage", "hedge"})
 
 RuleStatus = Literal["accepted", "rejected", "unavailable"]
 
@@ -173,6 +175,12 @@ class InstrumentExecutionFacts:
     Source and session references are opaque neutral identifiers. They must
     never contain CTP OrderRef, FrontID, SessionID, request IDs, credentials,
     or account identity. This DTO is evidence-shaped data, not a capability.
+    ``status='available'`` does not claim every optional field is complete.
+    Optional option metadata is present only when the selected provider has
+    source-bound evidence for that field. ``None`` means unavailable/unknown;
+    consumers must not infer or fill it from a strategy configuration. The
+    optional underlying identifier is provider-namespace text, not a complete
+    routable instrument key or proof that multiple legs form a valid strategy.
     """
 
     instrument: MarketInstrumentKey
@@ -194,6 +202,9 @@ class InstrumentExecutionFacts:
     option_expiry: date | None = None
     option_premium_style: str | None = None
     commission_rules: tuple[CommissionRuleFacts, ...] = ()
+    hedge_class: str | None = None
+    option_underlying_instrument_id: str | None = None
+    option_underlying_multiple: str | None = None
 
     def __post_init__(self) -> None:
         if type(self.instrument) is not MarketInstrumentKey:
@@ -240,6 +251,25 @@ class InstrumentExecutionFacts:
         if self.option_expiry is not None and type(self.option_expiry) is not date:
             raise TypeError("option_expiry must be a datetime.date or None")
         _check_text(self.option_premium_style, "option_premium_style", optional=True)
+        _check_text(
+            self.option_underlying_instrument_id,
+            "option_underlying_instrument_id",
+            optional=True,
+        )
+        _check_decimal(
+            self.option_underlying_multiple,
+            "option_underlying_multiple",
+            optional=True,
+            positive=True,
+        )
+        if self.asset_kind != "option" and (
+            self.option_underlying_instrument_id is not None
+            or self.option_underlying_multiple is not None
+        ):
+            raise ValueError("option underlying facts require asset_kind=option")
+        _check_text(self.hedge_class, "hedge_class", optional=True)
+        if self.hedge_class is not None and self.hedge_class not in _HEDGE_CLASSES:
+            raise ValueError("hedge_class must be speculation, arbitrage, or hedge")
         if type(self.commission_rules) is not tuple or any(
             type(item) is not CommissionRuleFacts for item in self.commission_rules
         ):
@@ -263,6 +293,135 @@ class InstrumentExecutionFacts:
 
 
 @dataclass(frozen=True)
+class InstrumentExecutionRulesSnapshot:
+    """SDK-issued, short-lived instrument and fee facts for Comminfo use.
+
+    ``facts`` is a neutral projection, not proof that its source/session was
+    selected or remains current. ``receipt`` is an opaque identity issued by
+    the selected SDK provider. The route-bound facade accepts only the exact
+    snapshot object it returned, and the provider must validate that receipt
+    against its own source, session and clock before returning ``True``.
+    This snapshot is not order authorization, a reservation, or dispatch
+    permission.
+    """
+
+    facts: InstrumentExecutionFacts
+    receipt: object = field(repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if type(self.facts) is not InstrumentExecutionFacts:
+            raise TypeError("facts must be InstrumentExecutionFacts")
+        if self.facts.status != "available":
+            raise ValueError("an execution-rules snapshot requires available facts")
+        if self.facts.hedge_class not in _HEDGE_CLASSES:
+            raise ValueError("an execution-rules snapshot requires an exact hedge class")
+        if self.receipt is None or type(self.receipt) is bool:
+            raise TypeError("receipt must be an opaque non-boolean object")
+
+
+@runtime_checkable
+class ExecutionRulesSnapshotPort(Protocol):
+    """Provider-neutral snapshot and exact-currentness check for one route."""
+
+    def execution_rules_snapshot(
+        self,
+        instrument: MarketInstrumentKey,
+        *,
+        hedge_class: str,
+    ) -> InstrumentExecutionRulesSnapshot:
+        """Issue a source receipt for this exact instrument and hedge class."""
+        ...
+
+    def validate_execution_rules_snapshot(
+        self,
+        snapshot: InstrumentExecutionRulesSnapshot,
+        *,
+        now_utc: datetime,
+    ) -> bool:
+        """Revalidate source/session/freshness using the provider's trusted clock."""
+        ...
+
+
+class ExecutionRulesPreparationUnavailable(RuntimeError):
+    """Finite failure to prepare current route-bound order-rule facts."""
+
+    _CODES = frozenset(
+        {
+            "execution_rules_preparation_unavailable",
+            "execution_rules_preparation_route_unavailable",
+            "execution_rules_preparation_route_changed",
+            "execution_rules_preparation_hedge_class_unavailable",
+            "execution_rules_preparation_instrument_route_mismatch",
+            "execution_rules_preparation_provider_unavailable",
+            "execution_rules_preparation_projection_invalid",
+            "execution_rules_preparation_not_current",
+        }
+    )
+
+    def __init__(self, code: str) -> None:
+        self.code = (
+            code
+            if type(code) is str and code in self._CODES
+            else "execution_rules_preparation_unavailable"
+        )
+        super().__init__(self.code)
+
+
+@runtime_checkable
+class ExecutionRulesPreparationPort(Protocol):
+    """Prepare and revalidate rule facts on the same order-rules route.
+
+    The prepared facts are an input to read-only preflight. They are not an
+    order decision, a reservation, authorization, or dispatch permission.
+    Providers must bind them to the exact instrument, neutral hedge class,
+    selected source/session, and their own currentness authority.
+    """
+
+    def prepare_rules(
+        self,
+        instrument: MarketInstrumentKey,
+        *,
+        hedge_class: str,
+    ) -> InstrumentExecutionRulesSnapshot:
+        """Return one exact current snapshot or raise a finite unavailable error."""
+        ...
+
+    def validate_prepared_rules(
+        self,
+        snapshot: InstrumentExecutionRulesSnapshot,
+        *,
+        now_utc: datetime,
+    ) -> bool:
+        """Return exact ``True`` only for this port's current issued snapshot."""
+        ...
+
+
+@runtime_checkable
+class ExecutionRulesSnapshotProviderFactory(Protocol):
+    """Construct one snapshot provider for an exact SDK-selected route."""
+
+    def __call__(
+        self,
+        route: SelectedExecutionRoute,
+        /,
+    ) -> ExecutionRulesSnapshotPort:
+        ...
+
+
+@runtime_checkable
+class ExecutionRulesSnapshotProviderRegistryPort(Protocol):
+    """Minimal registration surface consumed by exact-route providers."""
+
+    def register(
+        self,
+        exchange_name: str,
+        factory: ExecutionRulesSnapshotProviderFactory,
+        /,
+    ) -> None:
+        ...
+
+
+@dataclass(frozen=True)
 class ExecutionRuleRequest:
     """Neutral order facts needed by CTP order-rule validation.
 
@@ -273,6 +432,9 @@ class ExecutionRuleRequest:
     not account evidence: close evaluation also requires an SDK-issued opaque
     position evidence reference that the provider validates against the exact
     quantities, session generation, observation time, and expiry.
+    ``hedge_class`` is the explicit provider-neutral order intent echoed by the
+    correlated typed order request. It may be absent only to preserve an
+    unavailable preflight result; an evaluator must not guess a class.
     """
 
     instrument: MarketInstrumentKey
@@ -296,6 +458,7 @@ class ExecutionRuleRequest:
     position_evidence_generation: str | None = None
     position_observed_at_utc: datetime | None = None
     position_expires_at_utc: datetime | None = None
+    hedge_class: str | None = None
 
     def __post_init__(self) -> None:
         if type(self.instrument) is not MarketInstrumentKey:
@@ -346,6 +509,9 @@ class ExecutionRuleRequest:
             and self.position_expires_at_utc <= self.position_observed_at_utc
         ):
             raise ValueError("position evidence expiry must follow its observation")
+        _check_text(self.hedge_class, "hedge_class", optional=True)
+        if self.hedge_class is not None and self.hedge_class not in _HEDGE_CLASSES:
+            raise ValueError("hedge_class must be speculation, arbitrage, or hedge")
 
 
 @dataclass(frozen=True)
@@ -419,6 +585,8 @@ class ExecutionRuleDecision:
                 or self.request.session_generation is None
                 or self.facts.instrument != self.request.instrument
                 or self.facts.session_generation != self.request.session_generation
+                or self.request.hedge_class not in _HEDGE_CLASSES
+                or self.facts.hedge_class != self.request.hedge_class
                 or self.facts.expires_at_utc is None
                 or self.facts.price_tick is None
                 or self.facts.contract_multiplier is None
@@ -505,11 +673,44 @@ class ExecutionRulesPort(Protocol):
         ...
 
 
+@runtime_checkable
+class ExecutionRulesProviderFactory(Protocol):
+    """Construct one order-rules evaluator for an exact selected route."""
+
+    def __call__(
+        self,
+        route: SelectedExecutionRoute,
+        /,
+    ) -> ExecutionRulesPort:
+        ...
+
+
+@runtime_checkable
+class ExecutionRulesProviderRegistryPort(Protocol):
+    """Minimal route registration contract for order-rules evaluators."""
+
+    def register(
+        self,
+        exchange_name: str,
+        factory: ExecutionRulesProviderFactory,
+        /,
+    ) -> None:
+        ...
+
+
 __all__ = [
     "CommissionRuleFacts",
     "ExecutionRuleDecision",
     "ExecutionRuleRequest",
     "ExecutionRulesPort",
+    "ExecutionRulesProviderFactory",
+    "ExecutionRulesProviderRegistryPort",
+    "ExecutionRulesPreparationPort",
+    "ExecutionRulesPreparationUnavailable",
+    "ExecutionRulesSnapshotPort",
+    "ExecutionRulesSnapshotProviderFactory",
+    "ExecutionRulesSnapshotProviderRegistryPort",
     "InstrumentExecutionFacts",
+    "InstrumentExecutionRulesSnapshot",
     "RuleStatus",
 ]

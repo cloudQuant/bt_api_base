@@ -51,6 +51,8 @@ class SelectedQueryRoute:
     exchange_name: str
     client: object = field(repr=False, compare=False)
     environment: str | None = None
+    execution_context: object | None = field(default=None, repr=False, compare=False)
+    order_observation_issuer: object | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if not _valid_text(self.exchange_name, max_bytes=256):
