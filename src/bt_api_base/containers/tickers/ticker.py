@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from bt_api_base.containers.auto_init_mixin import AutoInitMixin
+from bt_api_base.containers.semantics import VOLUME_UNKNOWN
 
 
 class TickerData(AutoInitMixin):
@@ -131,10 +132,62 @@ class TickerData(AutoInitMixin):
     def get_last_volume(self) -> float | None:
         """Get last volume.
 
+        The meaning of this value is provider specific; see
+        :meth:`get_volume_semantics`.
+
         Returns: Last volume or None.
 
         """
         raise NotImplementedError
+
+    # ------------------------------------------------------------------
+    # Contract v1 semantic getters (iteration 60, D60-11).
+    #
+    # These have safe "unknown" defaults so every provider container answers
+    # them. Providers override them when the native feed supplies the fact.
+    # An unknown fact is None (or VOLUME_UNKNOWN), never zero or True.
+    # ------------------------------------------------------------------
+
+    def get_volume_semantics(self) -> str:
+        """Return what :meth:`get_last_volume` reports.
+
+        One of ``bt_api_base.containers.semantics.VOLUME_SEMANTICS``:
+        ``delta``, ``cumulative``, ``last_trade``, ``rolling_24h`` or
+        ``unknown`` (default).
+        """
+        return VOLUME_UNKNOWN
+
+    def get_cumulative_volume(self) -> float | None:
+        """Session/trading-day cumulative volume, or None when unknown."""
+        return None
+
+    def get_delta_volume(self) -> float | None:
+        """Volume traded since the previous tick of the same stream, or None."""
+        return None
+
+    def get_volume_complete(self) -> bool | None:
+        """Whether the delta volume is known to be gap free; None when unknown."""
+        return None
+
+    def get_continuity_status(self) -> str | None:
+        """Provider stream continuity (e.g. ``continuous``/``gap``); None when unknown."""
+        return None
+
+    def get_execution_eligible(self) -> bool | None:
+        """Provider/SDK decision that this quote may drive orders; None when unknown.
+
+        A container must never self-promote this to True without the evidence
+        required by its provider; the default is unknown.
+        """
+        return None
+
+    def get_quality_flags(self) -> tuple[str, ...]:
+        """Data-quality flags raised while parsing; empty when none were raised."""
+        return ()
+
+    def get_event_time_source(self) -> str | None:
+        """How the event time was derived (e.g. ``action_day``); None when unknown."""
+        return None
 
     def __str__(self) -> str:
         """String representation.

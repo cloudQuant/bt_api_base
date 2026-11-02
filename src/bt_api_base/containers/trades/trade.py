@@ -73,7 +73,9 @@ class TradeData(AutoInitMixin):
                 "order_id": self.order_id,
                 "trade_id": self.trade_id,
             }
-        return self.all_data
+        # Return a copy: the cache is shared by every reader of a published
+        # container and must not be mutated through the result (contract v1).
+        return dict(self.all_data)
 
     def get_exchange_name(self) -> str:
         """#"""

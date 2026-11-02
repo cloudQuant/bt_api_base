@@ -86,7 +86,9 @@ class PositionData(AutoInitMixin):
                 "position_unrealized_pnl": self.position_unrealized_pnl,
                 "position_funding_value": self.position_funding_value,
             }
-        return self.all_data
+        # Return a copy: the cache is shared by every reader of a published
+        # container and must not be mutated through the result (contract v1).
+        return dict(self.all_data)
 
     def get_exchange_name(self) -> str:
         """#"""
