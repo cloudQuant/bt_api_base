@@ -66,6 +66,10 @@ class WireMessageKind(str, Enum):
     EVENT = "event"
 
 
+# Exact text value -> member, the same lookup ``WireMessageKind(value)`` makes.
+_KIND_BY_VALUE = {kind.value: kind for kind in WireMessageKind}
+
+
 class WireErrorCode(str, Enum):
     """Stable, finite validation error categories."""
 
@@ -161,6 +165,29 @@ def _check_optional_text(value: Any, field: WireField) -> str | None:
     if value is None:
         return None
     return _check_text(value, field)
+
+
+# Exact ``str`` values that already passed ``_check_text``. The check is a pure
+# function of the string value (``field`` only names the error), so a value
+# found here passes again with the same result. Only stream-constant header
+# fields use it (operation, schema, stream identity); per-message values such
+# as ``message_id`` are never remembered. Bounded: cleared when full.
+_CHECKED_TEXT: set[str] = set()
+_CHECKED_TEXT_LIMIT = 4096
+
+
+def _check_repeated_text(value: Any, field: WireField) -> str | None:
+    """``_check_optional_text`` with a positive-result memo for repeated values."""
+
+    if value is None:
+        return None
+    if type(value) is str and value in _CHECKED_TEXT:
+        return value
+    _check_text(value, field)
+    if len(_CHECKED_TEXT) >= _CHECKED_TEXT_LIMIT:
+        _CHECKED_TEXT.clear()
+    _CHECKED_TEXT.add(value)
+    return value
 
 
 @dataclass(frozen=True)
@@ -266,16 +293,22 @@ class WireHeader:
             _fail(WireErrorCode.INVALID_TYPE, WireField.IDENTITY)
         if type(self.scope) is not WireScope:
             _fail(WireErrorCode.INVALID_TYPE, WireField.SCOPE)
-        _check_text(self.operation, WireField.OPERATION)
-        _check_text(self.schema_id, WireField.SCHEMA_ID)
+        # ``operation`` is never None, so the optional memo behaves as
+        # ``_check_text`` for it (None fails the type check either way).
+        if self.operation is None:
+            _fail(WireErrorCode.INVALID_TYPE, WireField.OPERATION)
+        _check_repeated_text(self.operation, WireField.OPERATION)
+        if self.schema_id is None:
+            _fail(WireErrorCode.INVALID_TYPE, WireField.SCHEMA_ID)
+        _check_repeated_text(self.schema_id, WireField.SCHEMA_ID)
         if type(self.schema_version) is not int:
             _fail(WireErrorCode.INVALID_TYPE, WireField.SCHEMA_VERSION)
         if self.schema_version <= 0:
             _fail(WireErrorCode.INVALID_VALUE, WireField.SCHEMA_VERSION)
         _check_utc_timestamp(self.sent_at_utc)
-        _check_optional_text(self.owner_epoch, WireField.OWNER_EPOCH)
-        _check_optional_text(self.stream_id, WireField.STREAM_ID)
-        _check_optional_text(self.stream_epoch, WireField.STREAM_EPOCH)
+        _check_repeated_text(self.owner_epoch, WireField.OWNER_EPOCH)
+        _check_repeated_text(self.stream_id, WireField.STREAM_ID)
+        _check_repeated_text(self.stream_epoch, WireField.STREAM_EPOCH)
 
         if self.kind is WireMessageKind.EVENT:
             if self.correlation_id is not None:
@@ -378,7 +411,23 @@ def _freeze_json_value(value: Any, *, depth: int) -> JsonValue:
                     _fail(WireErrorCode.INVALID_VALUE, WireField.PAYLOAD)
             if too_deep:  # the child's own depth check, after its key checks
                 _fail(WireErrorCode.INVALID_VALUE, WireField.PAYLOAD)
-            frozen_items[key] = _freeze_json_leaf(item, child_depth)
+            # ``_freeze_json_leaf`` inlined: most children are scalars.
+            item_kind = type(item)
+            if item_kind is str:
+                if not item.isascii():
+                    try:
+                        item.encode("utf-8", errors="strict")
+                    except UnicodeEncodeError:
+                        _fail(WireErrorCode.INVALID_VALUE, WireField.PAYLOAD)
+                frozen_items[key] = item
+            elif item is None or item_kind is bool or item_kind is int:
+                frozen_items[key] = item
+            elif item_kind is float:
+                if not math.isfinite(item):
+                    _fail(WireErrorCode.NON_FINITE_NUMBER, WireField.PAYLOAD)
+                frozen_items[key] = item
+            else:
+                frozen_items[key] = _freeze_json_value(item, depth=child_depth)
         return MappingProxyType(frozen_items)
     if kind is list or kind is tuple:
         child_depth = depth + 1
@@ -455,6 +504,10 @@ _SCOPE_KEYS = frozenset(
 
 
 def _check_object_keys(value: dict[str, Any], expected: frozenset[str], field: WireField) -> None:
+    # Fast path (C-level set comparison): an exact key set has neither an
+    # unknown nor a missing key. Otherwise the ordered checks below decide.
+    if value.keys() == expected:
+        return
     if any(key not in expected for key in value):
         _fail(WireErrorCode.UNKNOWN_FIELD, field)
     if any(key not in value for key in expected):
@@ -504,23 +557,71 @@ def _parse_scope(value: Any) -> WireScope:
     )
 
 
-def _parse_header(value: Any) -> WireHeader:
+class _DecodedClaimCache:
+    """Last parsed identity/scope of strictly decoded headers (decode path only).
+
+    A stream repeats the same identity and scope maps on every message. The
+    raw map of the last successful parse is kept with its result; a new raw
+    map *equal* to it parses to an equal object, so the object is reused.
+    Equality is only a sound shortcut for MessagePack-decoded input: decoded
+    values are exactly ``str``/``int``/``float``/``bool``/``None``/``list``/
+    ``dict``/``bytes``, and a value equal to a validated ``str``/``None``/
+    ``list[str]`` is then the same value of the same type. Callers that may
+    pass other objects (``envelope_from_wire_mapping``) do not use it.
+    """
+
+    __slots__ = ("identity", "scope")
+
+    def __init__(self) -> None:
+        self.identity: tuple[dict[str, Any], WireIdentity] | None = None
+        self.scope: tuple[dict[str, Any], WireScope] | None = None
+
+
+_DECODED_CLAIMS = _DecodedClaimCache()
+
+
+def _parse_decoded_identity(value: Any) -> WireIdentity:
+    cached = _DECODED_CLAIMS.identity
+    if cached is not None and type(value) is dict and value == cached[0]:
+        return cached[1]
+    identity = _parse_identity(value)
+    _DECODED_CLAIMS.identity = (dict(value), identity)
+    return identity
+
+
+def _parse_decoded_scope(value: Any) -> WireScope:
+    cached = _DECODED_CLAIMS.scope
+    if cached is not None and type(value) is dict and value == cached[0]:
+        return cached[1]
+    scope = _parse_scope(value)
+    raw = dict(value)
+    raw["account_refs"] = list(raw["account_refs"])
+    _DECODED_CLAIMS.scope = (raw, scope)
+    return scope
+
+
+def _parse_header(value: Any, *, decoded: bool = False) -> WireHeader:
     header = _expect_object(value, WireField.HEADER)
     _check_object_keys(header, _HEADER_KEYS, WireField.HEADER)
     kind_value = header["kind"]
     if type(kind_value) is not str:
         _fail(WireErrorCode.INVALID_TYPE, WireField.KIND)
-    try:
-        kind = WireMessageKind(kind_value)
-    except ValueError:
+    kind = _KIND_BY_VALUE.get(kind_value)
+    if kind is None:
         _fail(WireErrorCode.INVALID_VALUE, WireField.KIND)
+    if decoded:
+        identity = _parse_decoded_identity(header["identity"])
+        scope = _parse_decoded_scope(header["scope"])
+    else:
+        identity = _parse_identity(header["identity"])
+        scope = _parse_scope(header["scope"])
     return WireHeader(
         protocol_version=header["protocol_version"],
         kind=kind,
         message_id=header["message_id"],
         correlation_id=header["correlation_id"],
-        identity=_parse_identity(header["identity"]),
-        scope=_parse_scope(header["scope"]),
+        identity=identity,
+        scope=scope,
         operation=header["operation"],
         schema_id=header["schema_id"],
         schema_version=header["schema_version"],
@@ -734,6 +835,9 @@ def _reject_extension(_code: int, _data: bytes) -> Any:
     raise _InvalidWireValueError
 
 
+_ENVELOPE_KEYS = frozenset({"contract", "header", "payload"})
+
+
 def decode_envelope(data: bytes, *, max_bytes: int = MAX_WIRE_MESSAGE_BYTES) -> WireEnvelope:
     """Decode one strict v3 MessagePack envelope; v2 JSON and other contracts are refused."""
 
@@ -760,10 +864,10 @@ def decode_envelope(data: bytes, *, max_bytes: int = MAX_WIRE_MESSAGE_BYTES) -> 
         _fail(WireErrorCode.INVALID_JSON, WireField.MESSAGE)
 
     wire_object = _expect_object(wire_value, WireField.MESSAGE)
-    _check_object_keys(wire_object, frozenset({"contract", "header", "payload"}), WireField.MESSAGE)
+    _check_object_keys(wire_object, _ENVELOPE_KEYS, WireField.MESSAGE)
     if wire_object["contract"] != wire_contract_digest():
         _fail(WireErrorCode.UNSUPPORTED_VERSION, WireField.PROTOCOL_VERSION)
-    header = _parse_header(wire_object["header"])
+    header = _parse_header(wire_object["header"], decoded=True)
     # Payload validation (finite floats, text keys, depth, no binary) happens
     # in WireEnvelope's freeze step.
     return WireEnvelope(header=header, payload=wire_object["payload"])

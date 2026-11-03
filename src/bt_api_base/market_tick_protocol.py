@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import date, datetime, timezone
 from enum import Enum
+from types import MappingProxyType
 from typing import Any, ClassVar, Optional
 
 from bt_api_base.market_protocol import MarketInstrumentKey, MarketSourceDescriptor
@@ -50,9 +51,27 @@ class MarketFreshnessStatus(str, Enum):
     STALE = "stale"
 
 
+# Exact ``str`` values that already passed ``_text``. ``_text`` is a pure
+# function of the value (``field`` is unused), so a remembered value passes
+# again with the same result. Stream-constant identifiers (sources, clock ids,
+# quality labels) hit it on every tick. Bounded: cleared when full.
+_TEXT_OK: set[str] = set()
+_MEMO_LIMIT = 4096
+
+
 def _text(value: Any, field: str, *, optional: bool = False) -> Optional[str]:
     if value is None and optional:
         return None
+    if type(value) is str and value in _TEXT_OK:
+        return value
+    _checked_text(value)
+    if len(_TEXT_OK) >= _MEMO_LIMIT:
+        _TEXT_OK.clear()
+    _TEXT_OK.add(value)
+    return value
+
+
+def _checked_text(value: Any) -> str:
     if type(value) is not str or not value or value != value.strip():
         raise MarketTickContractError("MARKET_TICK_VALUE_INVALID")
     try:
@@ -65,9 +84,10 @@ def _text(value: Any, field: str, *, optional: bool = False) -> Optional[str]:
 
 
 def _utc_text(value: Any, field: str, *, optional: bool = False) -> Optional[str]:
-    text = _text(value, field, optional=optional)
-    if text is None:
+    # Per-tick timestamps are unique: validated without the ``_text`` memo.
+    if value is None and optional:
         return None
+    text = _checked_text(value)
     try:
         parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError as exc:
@@ -77,14 +97,27 @@ def _utc_text(value: Any, field: str, *, optional: bool = False) -> Optional[str
     return parsed.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
+# Exact ``str`` input -> normalized date text, for inputs ``_date_text``
+# accepted (a pure function of the value). Trading dates repeat for a session.
+_DATE_TEXT: dict[str, str] = {}
+
+
 def _date_text(value: Any, field: str) -> Optional[str]:
+    if type(value) is str:
+        known = _DATE_TEXT.get(value)
+        if known is not None:
+            return known
     text = _text(value, field, optional=True)
     if text is None:
         return None
     try:
-        return date.fromisoformat(text).isoformat()
+        result = date.fromisoformat(text).isoformat()
     except ValueError as exc:
         raise MarketTickContractError("MARKET_TICK_VALUE_INVALID") from exc
+    if len(_DATE_TEXT) >= _MEMO_LIMIT:
+        _DATE_TEXT.clear()
+    _DATE_TEXT[text] = result
+    return result
 
 
 def _number(value: Any) -> Optional[float]:
@@ -117,11 +150,18 @@ def _enum(value: Any, enum_type: type[Enum], code: str) -> Enum:
     if type(value) is enum_type:
         return value
     if type(value) is str:
-        try:
-            return enum_type(value)
-        except ValueError:
-            pass
+        # The same exact-value lookup ``enum_type(value)`` makes (these enums
+        # define no aliases or ``_missing_``).
+        member = _ENUM_BY_VALUE[enum_type].get(value)
+        if member is not None:
+            return member
     raise MarketTickContractError(code)
+
+
+_ENUM_BY_VALUE: dict[type, dict[str, Enum]] = {
+    enum_type: {member.value: member for member in enum_type}
+    for enum_type in (MarketClockQuality, MarketFreshnessStatus)
+}
 
 
 @dataclass(frozen=True)
@@ -236,121 +276,19 @@ class MarketTickPayload:
     )
 
     def __post_init__(self) -> None:
-        if type(self.instrument) is not MarketInstrumentKey:
-            raise MarketTickContractError("MARKET_TICK_INSTRUMENT_INVALID")
-        for name in (
-            "last_price",
-            "bid_price",
-            "ask_price",
-            "bid_size",
-            "ask_size",
-            "lower_limit",
-            "upper_limit",
-            "turnover",
-            "open_interest",
-            "delta_volume",
-            "cumulative_volume",
-        ):
-            object.__setattr__(self, name, _number(getattr(self, name)))
-        for name in ("source_clock_error_ms", "receive_clock_error_ms"):
-            object.__setattr__(self, name, _nonnegative_clock_error(getattr(self, name)))
-        for name in (
-            "volume_quality",
-            "continuity_status",
-            "provider_source",
-            "clock_domain_id",
-            "clock_source_session_id",
-            "clock_source",
-        ):
-            _text(getattr(self, name), name)
-        _text(self.quality_contract_ref, "quality_contract_ref", optional=True)
-        object.__setattr__(self, "trading_date", _date_text(self.trading_date, "trading_date"))
-        object.__setattr__(
-            self, "event_session_date", _date_text(self.event_session_date, "event_session_date")
-        )
-        object.__setattr__(
-            self,
-            "provider_event_time_utc",
-            _utc_text(self.provider_event_time_utc, "provider_event_time_utc", optional=True),
-        )
-        if type(self.event_time_provenance) is not str or self.event_time_provenance not in {
-            "provider_reported",
-            "unavailable",
-        }:
-            raise MarketTickContractError("MARKET_TICK_CLOCK_INVALID")
-        if (self.provider_event_time_utc is None) != (
-            self.event_time_provenance == "unavailable"
-        ):
-            raise MarketTickContractError("MARKET_TICK_CLOCK_INVALID")
-        object.__setattr__(
-            self, "received_at_utc", _utc_text(self.received_at_utc, "received_at_utc", optional=True)
-        )
-        object.__setattr__(
-            self,
-            "received_monotonic_ns",
-            _nonnegative_int(self.received_monotonic_ns, optional=True),
-        )
-        for name in ("provider_connection_generation", "provider_sequence"):
-            value = _nonnegative_int(getattr(self, name))
-            if value == 0:
-                raise MarketTickContractError("MARKET_TICK_VALUE_INVALID")
-        subscription_epoch = _nonnegative_int(self.provider_subscription_epoch)
-        if subscription_epoch == 0:
-            raise MarketTickContractError("MARKET_TICK_VALUE_INVALID")
-        if type(self.volume_complete) is not bool or type(self.execution_eligible) is not bool:
-            raise MarketTickContractError("MARKET_TICK_VALUE_INVALID")
-        object.__setattr__(
-            self,
-            "source_clock_quality",
-            _enum(self.source_clock_quality, MarketClockQuality, "MARKET_TICK_CLOCK_INVALID"),
-        )
-        object.__setattr__(
-            self,
-            "receive_clock_quality",
-            _enum(self.receive_clock_quality, MarketClockQuality, "MARKET_TICK_CLOCK_INVALID"),
-        )
-        status = _enum(
-            self.freshness_status,
-            MarketFreshnessStatus,
-            "MARKET_TICK_FRESHNESS_INVALID",
-        )
-        object.__setattr__(self, "freshness_status", status)
-        if type(self.freshness_reason_codes) not in (tuple, list):
-            raise MarketTickContractError("MARKET_TICK_FRESHNESS_INVALID")
-        reasons = tuple(self.freshness_reason_codes)
-        if any(type(reason) is not str or not reason for reason in reasons):
-            raise MarketTickContractError("MARKET_TICK_FRESHNESS_INVALID")
-        if status is MarketFreshnessStatus.UNAVAILABLE and not reasons:
-            raise MarketTickContractError("MARKET_TICK_FRESHNESS_INVALID")
-        if status is not MarketFreshnessStatus.UNAVAILABLE:
-            if (
-                self.source_clock_quality is not MarketClockQuality.VERIFIED
-                or self.receive_clock_quality is not MarketClockQuality.VERIFIED
-                or self.provider_event_time_utc is None
-                or self.received_at_utc is None
-                or self.received_monotonic_ns is None
-                or self.source_clock_error_ms is None
-                or self.receive_clock_error_ms is None
-            ):
-                raise MarketTickContractError("MARKET_TICK_FRESHNESS_INVALID")
-        if self.execution_eligible and (
-            self.quality_contract_ref is None
-            or status is not MarketFreshnessStatus.FRESH
-            or self.source_clock_quality is not MarketClockQuality.VERIFIED
-            or self.receive_clock_quality is not MarketClockQuality.VERIFIED
-        ):
-            raise MarketTickContractError("MARKET_TICK_FRESHNESS_INVALID")
-        object.__setattr__(self, "freshness_reason_codes", reasons)
-        if type(self.quality_flags) not in (tuple, list):
-            raise MarketTickContractError("MARKET_TICK_VALUE_INVALID")
-        flags = tuple(self.quality_flags)
-        if any(type(flag) is not str or not flag for flag in flags):
-            raise MarketTickContractError("MARKET_TICK_VALUE_INVALID")
-        object.__setattr__(self, "quality_flags", flags)
+        # Validation and normalization live in ``_normalize_tick_fields`` so
+        # that ``from_dict`` applies exactly the same rules, in the same order.
+        _normalize_tick_fields(self.__dict__)
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> "MarketTickPayload":
-        if (
+        kind = type(raw)
+        if kind is dict or kind is MappingProxyType:
+            # Plain mappings (including frozen wire payloads): the same field
+            # set checks as below, made with C-level set operations.
+            if raw.keys() != cls._FIELDS or set(map(type, raw)) != _STR_TYPE:
+                raise MarketTickContractError("MARKET_TICK_FIELD_SET_INVALID")
+        elif (
             not isinstance(raw, Mapping)
             or any(type(key) is not str for key in raw)
             or set(raw) != cls._FIELDS
@@ -369,46 +307,24 @@ class MarketTickPayload:
         # Schema v1 required a concrete rule reference; null is a v2 value.
         if raw["schema_version"] == 1 and raw["quality_contract_ref"] is None:
             raise MarketTickContractError("MARKET_TICK_VALUE_INVALID")
-        instrument = MarketInstrumentKey.from_dict(raw["instrument"])
-        return cls(
-            instrument=instrument,
-            last_price=raw["last_price"],
-            bid_price=raw["bid_price"],
-            ask_price=raw["ask_price"],
-            bid_size=raw["bid_size"],
-            ask_size=raw["ask_size"],
-            lower_limit=raw["lower_limit"],
-            upper_limit=raw["upper_limit"],
-            turnover=raw["turnover"],
-            open_interest=raw["open_interest"],
-            delta_volume=raw["delta_volume"],
-            cumulative_volume=raw["cumulative_volume"],
-            volume_complete=raw["volume_complete"],
-            volume_quality=raw["volume_quality"],
-            continuity_status=raw["continuity_status"],
-            trading_date=raw["trading_date"],
-            event_session_date=raw["event_session_date"],
-            provider_event_time_utc=raw["provider_event_time_utc"],
-            event_time_provenance=raw["event_time_provenance"],
-            received_at_utc=raw["received_at_utc"],
-            received_monotonic_ns=raw["received_monotonic_ns"],
-            provider_source=raw["provider_source"],
-            quality_contract_ref=raw["quality_contract_ref"],
-            provider_connection_generation=raw["provider_connection_generation"],
-            provider_sequence=raw["provider_sequence"],
-            provider_subscription_epoch=raw["provider_subscription_epoch"],
-            clock_domain_id=raw["clock_domain_id"],
-            clock_source_session_id=raw["clock_source_session_id"],
-            clock_source=raw["clock_source"],
-            source_clock_quality=raw["source_clock_quality"],
-            receive_clock_quality=raw["receive_clock_quality"],
-            source_clock_error_ms=raw["source_clock_error_ms"],
-            receive_clock_error_ms=raw["receive_clock_error_ms"],
-            freshness_status=raw["freshness_status"],
-            freshness_reason_codes=raw["freshness_reason_codes"],
-            execution_eligible=raw["execution_eligible"],
-            quality_flags=raw["quality_flags"],
-        )
+        instrument = _instrument_from_dict(raw["instrument"])
+        if cls is not MarketTickPayload or not (kind is dict or kind is MappingProxyType):
+            # Subclasses and other Mapping types keep the constructor path.
+            return cls(
+                instrument=instrument,
+                **{name: raw[name] for name in _TICK_FIELD_NAMES if name != "instrument"},
+            )
+        # Exactly ``cls(instrument=instrument, <field>=raw[<field>], ...)``:
+        # every field is supplied, and the constructor's only logic is
+        # ``__post_init__`` -> ``_normalize_tick_fields`` on these values.
+        values = dict(raw)
+        del values["schema"]
+        del values["schema_version"]
+        values["instrument"] = instrument
+        _normalize_tick_fields(values)
+        payload = object.__new__(MarketTickPayload)
+        payload.__dict__.update(values)
+        return payload
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -452,6 +368,161 @@ class MarketTickPayload:
             "execution_eligible": self.execution_eligible,
             "quality_flags": list(self.quality_flags),
         }
+
+
+_STR_TYPE = frozenset({str})
+_NUMBER_FIELDS = (
+    "last_price",
+    "bid_price",
+    "ask_price",
+    "bid_size",
+    "ask_size",
+    "lower_limit",
+    "upper_limit",
+    "turnover",
+    "open_interest",
+    "delta_volume",
+    "cumulative_volume",
+)
+_REQUIRED_TEXT_FIELDS = (
+    "volume_quality",
+    "continuity_status",
+    "provider_source",
+    "clock_domain_id",
+    "clock_source_session_id",
+    "clock_source",
+)
+_PROVENANCE_VALUES = frozenset({"provider_reported", "unavailable"})
+_TICK_FIELD_NAMES = tuple(field.name for field in fields(MarketTickPayload))
+
+
+def _normalize_tick_fields(v: dict[str, Any]) -> None:
+    """Validate and normalize ``MarketTickPayload`` field values in place.
+
+    The single implementation of the payload contract: ``__post_init__``
+    applies it to the instance dict and ``from_dict`` to the decoded values.
+    Checks run in a fixed order, so the first failing rule decides the code.
+    """
+
+    if type(v["instrument"]) is not MarketInstrumentKey:
+        raise MarketTickContractError("MARKET_TICK_INSTRUMENT_INVALID")
+    for name in _NUMBER_FIELDS:
+        value = v[name]
+        if value is not None:
+            if type(value) is float:
+                # ``_number`` of a float is the float itself when finite;
+                # ``x - x`` is 0.0 exactly for finite x and NaN otherwise.
+                if value - value != 0.0:
+                    raise MarketTickContractError("MARKET_TICK_VALUE_INVALID")
+            else:
+                v[name] = _number(value)
+    v["source_clock_error_ms"] = _nonnegative_clock_error(v["source_clock_error_ms"])
+    v["receive_clock_error_ms"] = _nonnegative_clock_error(v["receive_clock_error_ms"])
+    for name in _REQUIRED_TEXT_FIELDS:
+        _text(v[name], name)
+    _text(v["quality_contract_ref"], "quality_contract_ref", optional=True)
+    v["trading_date"] = _date_text(v["trading_date"], "trading_date")
+    v["event_session_date"] = _date_text(v["event_session_date"], "event_session_date")
+    provider_event_time_utc = _utc_text(
+        v["provider_event_time_utc"], "provider_event_time_utc", optional=True
+    )
+    v["provider_event_time_utc"] = provider_event_time_utc
+    provenance = v["event_time_provenance"]
+    if type(provenance) is not str or provenance not in _PROVENANCE_VALUES:
+        raise MarketTickContractError("MARKET_TICK_CLOCK_INVALID")
+    if (provider_event_time_utc is None) != (provenance == "unavailable"):
+        raise MarketTickContractError("MARKET_TICK_CLOCK_INVALID")
+    received_at_utc = _utc_text(v["received_at_utc"], "received_at_utc", optional=True)
+    v["received_at_utc"] = received_at_utc
+    received_monotonic_ns = _nonnegative_int(v["received_monotonic_ns"], optional=True)
+    v["received_monotonic_ns"] = received_monotonic_ns
+    for name in ("provider_connection_generation", "provider_sequence"):
+        if _nonnegative_int(v[name]) == 0:
+            raise MarketTickContractError("MARKET_TICK_VALUE_INVALID")
+    if _nonnegative_int(v["provider_subscription_epoch"]) == 0:
+        raise MarketTickContractError("MARKET_TICK_VALUE_INVALID")
+    if type(v["volume_complete"]) is not bool or type(v["execution_eligible"]) is not bool:
+        raise MarketTickContractError("MARKET_TICK_VALUE_INVALID")
+    source_quality = _enum(
+        v["source_clock_quality"], MarketClockQuality, "MARKET_TICK_CLOCK_INVALID"
+    )
+    v["source_clock_quality"] = source_quality
+    receive_quality = _enum(
+        v["receive_clock_quality"], MarketClockQuality, "MARKET_TICK_CLOCK_INVALID"
+    )
+    v["receive_clock_quality"] = receive_quality
+    status = _enum(v["freshness_status"], MarketFreshnessStatus, "MARKET_TICK_FRESHNESS_INVALID")
+    v["freshness_status"] = status
+    raw_reasons = v["freshness_reason_codes"]
+    if type(raw_reasons) not in (tuple, list):
+        raise MarketTickContractError("MARKET_TICK_FRESHNESS_INVALID")
+    reasons = tuple(raw_reasons)
+    if any(type(reason) is not str or not reason for reason in reasons):
+        raise MarketTickContractError("MARKET_TICK_FRESHNESS_INVALID")
+    if status is MarketFreshnessStatus.UNAVAILABLE and not reasons:
+        raise MarketTickContractError("MARKET_TICK_FRESHNESS_INVALID")
+    if status is not MarketFreshnessStatus.UNAVAILABLE:
+        if (
+            source_quality is not MarketClockQuality.VERIFIED
+            or receive_quality is not MarketClockQuality.VERIFIED
+            or provider_event_time_utc is None
+            or received_at_utc is None
+            or received_monotonic_ns is None
+            or v["source_clock_error_ms"] is None
+            or v["receive_clock_error_ms"] is None
+        ):
+            raise MarketTickContractError("MARKET_TICK_FRESHNESS_INVALID")
+    if v["execution_eligible"] and (
+        v["quality_contract_ref"] is None
+        or status is not MarketFreshnessStatus.FRESH
+        or source_quality is not MarketClockQuality.VERIFIED
+        or receive_quality is not MarketClockQuality.VERIFIED
+    ):
+        raise MarketTickContractError("MARKET_TICK_FRESHNESS_INVALID")
+    v["freshness_reason_codes"] = reasons
+    raw_flags = v["quality_flags"]
+    if type(raw_flags) not in (tuple, list):
+        raise MarketTickContractError("MARKET_TICK_VALUE_INVALID")
+    flags = tuple(raw_flags)
+    if any(type(flag) is not str or not flag for flag in flags):
+        raise MarketTickContractError("MARKET_TICK_VALUE_INVALID")
+    v["quality_flags"] = flags
+
+
+class _InstrumentCache:
+    """Last instrument mapping accepted by ``MarketTickPayload.from_dict``."""
+
+    __slots__ = ("last",)
+
+    def __init__(self) -> None:
+        self.last: tuple[dict[str, str], MarketInstrumentKey] | None = None
+
+
+_INSTRUMENT_CACHE = _InstrumentCache()
+
+
+def _instrument_from_dict(raw: Any) -> MarketInstrumentKey:
+    """``MarketInstrumentKey.from_dict`` reusing the last equal parsed key.
+
+    The shortcut applies only to a plain mapping whose keys and values are
+    all exact ``str``: such a mapping equal to the last accepted one has the
+    same items, so parsing it again yields an equal key. Anything else is
+    parsed (and rejected) by ``from_dict`` itself.
+    """
+
+    kind = type(raw)
+    if kind is dict or kind is MappingProxyType:
+        cached = _INSTRUMENT_CACHE.last
+        plain = (
+            set(map(type, raw)) == _STR_TYPE and set(map(type, raw.values())) == _STR_TYPE
+        )
+        if plain and cached is not None and raw == cached[0]:
+            return cached[1]
+        key = MarketInstrumentKey.from_dict(raw)
+        if plain:
+            _INSTRUMENT_CACHE.last = (dict(raw), key)
+        return key
+    return MarketInstrumentKey.from_dict(raw)
 
 
 @dataclass(frozen=True)
@@ -630,7 +701,16 @@ def bind_market_tick_event(
         or cursor.epoch != source.epoch
     ):
         raise MarketTickContractError("MARKET_TICK_SOURCE_BINDING_MISMATCH")
-    clock = DataClockBinding(
+    # Every ``DataClockBinding``/``MarketTickEvent`` check is already decided
+    # here: the types and source/cursor/fact bindings are checked above, and
+    # the clock fields are copied from an exact ``MarketTickPayload`` whose
+    # constructor validated them with the same rules (the normalizations are
+    # idempotent on its normalized values). Re-running those constructors
+    # would repeat the work with the same result, so the bound objects are
+    # assembled directly. ``tests/test_market_tick_hot_path_equivalence.py``
+    # proves equality with the constructor-built objects.
+    clock = object.__new__(DataClockBinding)
+    clock.__dict__.update(
         source=source,
         cursor=cursor,
         provider_event_time_utc=data.provider_event_time_utc,
@@ -643,7 +723,9 @@ def bind_market_tick_event(
         freshness_status=data.freshness_status,
         freshness_reason_codes=data.freshness_reason_codes,
     )
-    return MarketTickEvent(source=source, cursor=cursor, data=data, clock=clock)
+    event = object.__new__(MarketTickEvent)
+    event.__dict__.update(source=source, cursor=cursor, data=data, clock=clock)
+    return event
 
 
 __all__ = [

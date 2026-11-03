@@ -7,8 +7,11 @@ verification at the receiver. A trade record does not include fee facts.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass, fields
+from decimal import Decimal
 from typing import Any, ClassVar
 
 from bt_api_base.account_protocol import AccountKey, account_venue_contains_instrument_venue
@@ -102,4 +105,150 @@ class AccountExecutionTradeObservation:
         )
 
 
-__all__ = ("AccountExecutionOrderObservation", "AccountExecutionTradeObservation")
+# ---------------------------------------------------------------------------
+# Account-journal event envelope (iteration 60, R2-C)
+# ---------------------------------------------------------------------------
+#
+# A Gateway account owner publishes each observation as one journal event.
+# The event id is a *fact id*: it is derived from the provider fact (order
+# identity, state and cumulative quantity; or trade identity) and not from the
+# observation time, so a provider redelivering the same fact maps to the same
+# id. ``fact_digest`` covers every field except ``observed_at_utc`` (decimals
+# normalized); two observations with one fact id and different digests are a
+# conflict that a consumer must not silently merge. Neither value proves the
+# fact, its source, or any intent binding.
+
+EXECUTION_ORDER_EVENT_KIND = "account.execution_order.v1"
+EXECUTION_TRADE_EVENT_KIND = "account.execution_trade.v1"
+EXECUTION_EVENT_SCHEMA = "bt_api.account.execution_event.v1"
+EXECUTION_EVENT_KINDS = frozenset({EXECUTION_ORDER_EVENT_KIND, EXECUTION_TRADE_EVENT_KIND})
+_EVENT_FIELDS = frozenset({"schema", "fact_id", "fact_digest", "observation"})
+_DECIMAL_FIELDS = frozenset({"quantity", "filled_quantity", "limit_price", "price"})
+
+ExecutionObservation = AccountExecutionOrderObservation | AccountExecutionTradeObservation
+
+
+def _normal_decimal(value: object) -> object:
+    if type(value) is not str:
+        return value
+    number = Decimal(value)
+    if number == 0:
+        return "0"
+    return format(number.normalize(), "f")
+
+
+def _digest(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _row(observation: object) -> tuple[str, Mapping[str, Any], str]:
+    if type(observation) is AccountExecutionOrderObservation:
+        account = observation.account_key.account_key_id
+        return EXECUTION_ORDER_EVENT_KIND, observation.order.to_dict(), account
+    if type(observation) is AccountExecutionTradeObservation:
+        account = observation.account_key.account_key_id
+        return EXECUTION_TRADE_EVENT_KIND, observation.trade.to_dict(), account
+    raise TypeError("expected an account execution observation")
+
+
+def execution_observation_fact_id(observation: ExecutionObservation) -> str:
+    """Stable id of the provider fact: same fact, same id, across redeliveries."""
+
+    kind, row, account = _row(observation)
+    instrument = row["instrument"]
+    if kind == EXECUTION_ORDER_EVENT_KIND:
+        parts = [
+            "order",
+            account,
+            instrument,
+            row["order_id"],
+            row["status"],
+            _normal_decimal(row["filled_quantity"]),
+            _normal_decimal(row["quantity"]),
+        ]
+        return "xo-" + _digest(parts)[:48]
+    return "xt-" + _digest(["trade", account, instrument, row["trade_id"]])[:48]
+
+
+def execution_observation_fact_digest(observation: ExecutionObservation) -> str:
+    """Digest of every fact field except the observation time."""
+
+    kind, row, _account = _row(observation)
+    content = {
+        key: (_normal_decimal(value) if key in _DECIMAL_FIELDS else value)
+        for key, value in row.items()
+        if key != "observed_at_utc"
+    }
+    return _digest([kind, observation.account_key.to_dict(), content])
+
+
+def execution_observation_event(
+    observation: ExecutionObservation,
+) -> tuple[str, str, dict[str, Any]]:
+    """Return ``(kind, event_id, payload)`` for one account-journal event."""
+
+    kind, _row_value, _account = _row(observation)
+    fact_id = execution_observation_fact_id(observation)
+    return (
+        kind,
+        fact_id,
+        {
+            "schema": EXECUTION_EVENT_SCHEMA,
+            "fact_id": fact_id,
+            "fact_digest": execution_observation_fact_digest(observation),
+            "observation": observation.to_dict(),
+        },
+    )
+
+
+def execution_observation_from_event(
+    kind: object, event_id: object, payload: object
+) -> ExecutionObservation:
+    """Decode and re-derive one journal event; any inconsistency is rejected."""
+
+    if type(kind) is not str or kind not in EXECUTION_EVENT_KINDS:
+        raise ValueError("unsupported execution event kind")
+    raw = _fields(payload, _EVENT_FIELDS)
+    if raw["schema"] != EXECUTION_EVENT_SCHEMA:
+        raise ValueError("unsupported execution event schema")
+    decoder = (
+        AccountExecutionOrderObservation
+        if kind == EXECUTION_ORDER_EVENT_KIND
+        else AccountExecutionTradeObservation
+    )
+    observation = decoder.from_dict(_plain(raw["observation"]))
+    fact_id = execution_observation_fact_id(observation)
+    if event_id != fact_id or raw["fact_id"] != fact_id:
+        raise ValueError("execution event id does not match its fact")
+    if raw["fact_digest"] != execution_observation_fact_digest(observation):
+        raise ValueError("execution event digest does not match its fact")
+    return observation
+
+
+def _plain(value: Any) -> Any:
+    """Copy frozen mappings/sequences (for example a journal replay) into JSON types."""
+
+    if isinstance(value, Mapping):
+        return {key: _plain(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain(item) for item in value]
+    return value
+
+
+__all__ = (
+    "AccountExecutionOrderObservation",
+    "AccountExecutionTradeObservation",
+    "EXECUTION_EVENT_KINDS",
+    "EXECUTION_EVENT_SCHEMA",
+    "EXECUTION_ORDER_EVENT_KIND",
+    "EXECUTION_TRADE_EVENT_KIND",
+    "ExecutionObservation",
+    "execution_observation_event",
+    "execution_observation_fact_digest",
+    "execution_observation_fact_id",
+    "execution_observation_from_event",
+)

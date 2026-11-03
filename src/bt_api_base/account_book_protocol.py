@@ -3,6 +3,15 @@
 The projection records service-owned journal coverage and, when present, a
 separate persisted financial cut. It does not grant write authority and does
 not turn a persisted cut into provider-live account state.
+
+Contract version 2 (iteration 60, R2-D) adds the declared cut identity of the
+snapshot: ``position_cut_id`` names the ledger transaction the positions were
+read in, ``financial_cut_id`` the transaction of cash, costs and instrument
+terms, and ``reconciliation_state`` the reconciliation verdict reached in that
+transaction. A ``SAME_TRANSACTION`` financial cut is only representable when
+both identifiers are present and equal and the verdict is ``BALANCED``. A
+snapshot of another contract version is refused
+(``STRATEGY_BOOK_CONTRACT_VERSION_UNSUPPORTED``), never upgraded.
 """
 
 from __future__ import annotations
@@ -24,6 +33,14 @@ _WATERMARK_KINDS = frozenset({"execution_outbox", "account_facts", "account_acti
 _MAX_ROWS = 4096
 _MAX_TEXT = 256
 _MAX_DECIMAL_TEXT = 128
+#: Version of the :class:`StrategyAccountBookSnapshot` contract. Version 1
+#: had no declared cut identity; it is refused rather than upgraded.
+STRATEGY_ACCOUNT_BOOK_CONTRACT_VERSION = 2
+#: Cash, costs and positions read in one ledger transaction (the only
+#: relationship a strategy valuation may use).
+SAME_TRANSACTION_CUT = "SAME_TRANSACTION"
+RECONCILED_IN_SNAPSHOT = "RECONCILED_IN_SNAPSHOT"
+_RECONCILIATION_STATES = frozenset({"BALANCED", "IN_FLIGHT", "RESIDUAL", "UNVERIFIED"})
 
 
 class AccountBookProjectionError(RuntimeError):
@@ -198,8 +215,17 @@ class StrategyAccountBookSnapshot:
     financial_cut_relationship: str | None = None
     financial_ledger_cut: StrategyFinancialLedgerCut | None = None
     account_key: str | None = None
+    position_cut_id: str | None = None
+    financial_cut_id: str | None = None
+    reconciliation_state: str | None = None
+    contract_version: int = STRATEGY_ACCOUNT_BOOK_CONTRACT_VERSION
 
     def __post_init__(self) -> None:
+        if (
+            type(self.contract_version) is not int
+            or self.contract_version != STRATEGY_ACCOUNT_BOOK_CONTRACT_VERSION
+        ):
+            raise AccountBookProjectionError("STRATEGY_BOOK_CONTRACT_VERSION_UNSUPPORTED")
         for name in (
             "strategy_ref",
             "account_ref",
@@ -237,6 +263,24 @@ class StrategyAccountBookSnapshot:
         _optional_text(self.financial_freshness, "INVALID_FINANCIAL_PROJECTION")
         _optional_text(self.financial_cut_relationship, "INVALID_FINANCIAL_PROJECTION")
         _optional_text(self.account_key, "INVALID_COVERAGE")
+        _optional_text(self.position_cut_id, "INVALID_COVERAGE")
+        _optional_text(self.financial_cut_id, "INVALID_FINANCIAL_CUT")
+        if (
+            self.reconciliation_state is not None
+            and self.reconciliation_state not in _RECONCILIATION_STATES
+        ):
+            raise AccountBookProjectionError("INVALID_RECONCILIATION_STATE")
+        if self.financial_cut_id is not None and not self.financial_available:
+            raise AccountBookProjectionError("INVALID_FINANCIAL_CUT")
+        if self.financial_cut_relationship == SAME_TRANSACTION_CUT and (
+            self.position_cut_id is None
+            or self.financial_cut_id != self.position_cut_id
+            or self.reconciliation_state != "BALANCED"
+            or self.financial_freshness != RECONCILED_IN_SNAPSHOT
+        ):
+            # A same-transaction claim must name one transaction for every
+            # figure and carry that transaction's balanced verdict.
+            raise AccountBookProjectionError("STRATEGY_FINANCIAL_CUT_MISMATCH")
         if self.financial_available:
             if (
                 self.financial_error_code
@@ -539,6 +583,9 @@ def _unavailable_financial(code: str) -> dict[str, Any]:
 
 
 __all__ = [
+    "RECONCILED_IN_SNAPSHOT",
+    "SAME_TRANSACTION_CUT",
+    "STRATEGY_ACCOUNT_BOOK_CONTRACT_VERSION",
     "AccountBookProjectionError",
     "StrategyAccountBookSnapshot",
     "StrategyFinancialLedgerCut",

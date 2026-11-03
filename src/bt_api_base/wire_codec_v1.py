@@ -959,10 +959,12 @@ GENERIC_SERVICE_OPERATIONS: Mapping[str, str] = MappingProxyType(
         "account.reconciliation_cut": "reconciliation diagnostic; no typed kind",
         "execution.account_books.query:non-owner-views": "recovery/journal views; no typed kind",
         "orders.submit:binding-less-hosts": (
-            "legacy SDK request map, only on hosts without trusted typed command bindings"
+            "legacy SDK request map, only on hosts configured without command_bindings"
+            " (CTP execution runtime, group owners); configured clients always send typed"
         ),
         "orders.cancel:binding-less-hosts": (
-            "legacy SDK request map, only on hosts without trusted typed command bindings"
+            "legacy SDK request map, only on hosts configured without command_bindings"
+            " (CTP execution runtime, group owners); configured clients always send typed"
         ),
         "orders.*": "durable execution records, group legs and recovery references; no typed kind",
         "market.*": "market event/read envelopes; tick/bar stream kinds are not used on this path",
@@ -1143,12 +1145,15 @@ def schema_digest() -> str:
                 "position_cost_decimals": list(_COST_DECIMALS),
                 "ledger_cut_fields": list(_CUT_FIELDS),
                 "watermark_fields": list(_WATERMARK_FIELDS),
-                "semantics_revision": 1,
+                "semantics_revision": 2,
                 "semantics": {
                     "decimals": "canonical-lexeme; numerically-exact-round-trip-or-reject",
                     "rows": "at-most-wire-container-limit; larger-books-are-refused",
                     "financials": "only-with-complete-financial-cut; else-no-financial-rows",
                     "authority": "declared-only; route-and-owner-binding-verified-by-caller",
+                    # R2-D: contract version 2 declares the cut identity.
+                    "contract_version": "exactly-2; other-versions-refused",
+                    "same_transaction": "position-and-financial-cut-ids-equal; verdict-BALANCED",
                 },
             },
             "strategy_result": {

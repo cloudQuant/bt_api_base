@@ -71,6 +71,10 @@ def _book(*, financial=True, **overrides):
             financial_cut_relationship="SAME_TRANSACTION",
             financial_ledger_cut=_cut(),
             account_key="acct-1",
+            # Contract 2 (R2-D): one declared cut and its balanced verdict.
+            position_cut_id="gen-1:5:cut",
+            financial_cut_id="gen-1:5:cut",
+            reconciliation_state="BALANCED",
         )
     base.update(overrides)
     return StrategyAccountBookSnapshot(**base)
