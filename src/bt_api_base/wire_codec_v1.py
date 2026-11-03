@@ -32,6 +32,15 @@ Contract v1:
   open-order rows. A row does not assert complete snapshot coverage.
 * Minor 3 adds account-scoped provider order and trade observations. They
   do not authenticate their source or establish a strategy/intent binding.
+* Minor 4 adds the strategy account book snapshot.
+* Minor 5 revises the strategy submit/cancel/result commands: they carry the
+  SDK request fields (signal, metadata version, tags, position bucket) and a
+  semantic fingerprint that the decoder recomputes; results carry the
+  fingerprint of the command they answer. Older command shapes are refused.
+  Minor 5 also adds *typed parts* (:func:`encode_typed_part`), the
+  service-operation registry (:data:`TYPED_SERVICE_OPERATIONS`,
+  :data:`GENERIC_SERVICE_OPERATIONS`) and the connect-time typed contract
+  declaration (:func:`typed_contract_declaration`).
 
 Field values are data, not proof: a decoded message does not authenticate its
 source or grant trading permission (plan INV-05).
@@ -96,24 +105,33 @@ __all__ = [
     "SCHEMA_ID",
     "SUPPORTED_MAJOR",
     "SUPPORTED_MINOR",
+    "GENERIC_SERVICE_OPERATIONS",
     "StreamPosition",
+    "TYPED_PART_SCHEMA",
+    "TYPED_SERVICE_OPERATIONS",
     "WireCodecError",
     "WireMessageV1",
     "account_observation_from_typed_map",
     "account_observation_to_typed_map",
     "canonical_decimal",
+    "check_stream_successor",
+    "check_typed_contract_declaration",
     "codec_backend",
+    "decode_typed_part",
+    "encode_typed_part",
+    "typed_contract_declaration",
     "DEFAULT_DECIMAL_FIELDS",
     "command_fingerprint",
     "decode_message",
     "encode_message",
     "parse_decimal",
     "schema_digest",
+    "service_operation_contract",
 ]
 
 SCHEMA_ID = "bt_api.wire.v1"
 SUPPORTED_MAJOR = 1
-SUPPORTED_MINOR = 4
+SUPPORTED_MINOR = 5
 MAX_MESSAGE_BYTES = 64 * 1024
 MAX_DEPTH = 8
 MAX_CONTAINER_LEN = 256
@@ -154,6 +172,60 @@ class StreamPosition:
         if type(self.sequence) is not int or not 1 <= self.sequence <= _INT64_MAX:
             raise WireCodecError("WIRE_STREAM_INVALID")
 
+    def next(self) -> StreamPosition:
+        """The successor in this epoch; exhaustion requires an epoch switch.
+
+        ``sequence`` is a fixed signed-64-bit positive integer starting at 1.
+        It never wraps inside an epoch.
+        """
+
+        if self.sequence >= _INT64_MAX:
+            raise WireCodecError("WIRE_SEQUENCE_EXHAUSTED")
+        return StreamPosition(self.stream_id, self.epoch, self.sequence + 1)
+
+    def switch_epoch(self, epoch: str) -> StreamPosition:
+        """Start a new epoch of the same stream at sequence 1."""
+
+        if type(epoch) is not str or epoch == self.epoch:
+            raise WireCodecError("WIRE_EPOCH_SWITCH_INVALID")
+        return StreamPosition(self.stream_id, epoch, 1)
+
+
+def check_stream_successor(
+    previous: StreamPosition | None,
+    current: StreamPosition,
+    *,
+    retired_epochs: frozenset[str] = frozenset(),
+) -> None:
+    """Accept only the exact next position of a stream (receiver side).
+
+    Within an epoch the sequence must be exactly ``previous + 1``: a repeat is
+    ``WIRE_SEQUENCE_REPLAY`` and a jump is ``WIRE_SEQUENCE_GAP``. A different
+    epoch must start at sequence 1 and must not be a retired epoch. This only
+    detects ordering; it does not authenticate the publisher (INV-05).
+    """
+
+    if type(current) is not StreamPosition or (
+        previous is not None and type(previous) is not StreamPosition
+    ):
+        raise WireCodecError("WIRE_STREAM_INVALID")
+    if type(retired_epochs) is not frozenset:
+        raise WireCodecError("WIRE_STREAM_INVALID")
+    if current.epoch in retired_epochs:
+        raise WireCodecError("WIRE_EPOCH_RETIRED")
+    if previous is None:
+        return
+    if current.stream_id != previous.stream_id:
+        raise WireCodecError("WIRE_STREAM_MISMATCH")
+    if current.epoch != previous.epoch:
+        if current.sequence != 1:
+            raise WireCodecError("WIRE_EPOCH_SWITCH_INVALID")
+        return
+    if current.sequence <= previous.sequence:
+        raise WireCodecError("WIRE_SEQUENCE_REPLAY")
+    if current.sequence != previous.sequence + 1:
+        raise WireCodecError("WIRE_SEQUENCE_GAP")
+
 
 @dataclasses.dataclass(frozen=True)
 class WireMessageV1:
@@ -184,6 +256,16 @@ def canonical_decimal(value: Any) -> str:
         raise WireCodecError("WIRE_DECIMAL_INVALID")
     if number == 0:
         return "0"
+    # Bound the exponent before formatting: a huge exponent would otherwise
+    # expand into an enormous string before the length check (plan §8.2).
+    sign_digits_exponent = number.as_tuple()
+    digits = sign_digits_exponent.digits
+    trailing = len(digits) - len(bytes(digits).rstrip(b"\x00"))
+    if (
+        number.adjusted() >= _MAX_DECIMAL_CHARS
+        or sign_digits_exponent.exponent + trailing < -_MAX_DECIMAL_CHARS
+    ):
+        raise WireCodecError("WIRE_DECIMAL_INVALID")
     text = format(number, "f")
     if "." in text:
         text = text.rstrip("0").rstrip(".")
@@ -616,6 +698,8 @@ def _encode_strategy_command(payload: Any) -> dict[str, Any]:
             for name in ("quantity", "limit_price"):
                 if data[name] is not None:
                     data[name] = canonical_decimal(data[name])
+        if type(payload) in (StrategySubmitCommand, StrategyCancelCommand):
+            data["semantic_fingerprint"] = payload.semantic_fingerprint
         return data
     except WireCodecError:
         raise
@@ -625,11 +709,22 @@ def _encode_strategy_command(payload: Any) -> dict[str, Any]:
 
 def _decode_strategy_command(data: Mapping[str, Any], cls: Any) -> Any:
     try:
+        body = dict(data)
+        claimed = None
+        if cls in (StrategySubmitCommand, StrategyCancelCommand):
+            claimed = body.pop("semantic_fingerprint")
+            if type(claimed) is not str:
+                raise WireCodecError("WIRE_PAYLOAD_INVALID")
         if cls is StrategySubmitCommand:
             for name in ("quantity", "limit_price"):
-                if data[name] is not None:
-                    parse_decimal(data[name])
-        return cls.from_dict(data)
+                if body[name] is not None:
+                    parse_decimal(body[name])
+        command = cls.from_dict(body)
+        if claimed is not None and command.semantic_fingerprint != claimed:
+            # The sender's content identity differs from the decoded content:
+            # never attach it to this idempotency key.
+            raise WireCodecError("WIRE_COMMAND_FINGERPRINT_MISMATCH")
+        return command
     except WireCodecError:
         raise
     except (AttributeError, KeyError, TypeError, ValueError, OverflowError):
@@ -773,6 +868,137 @@ _KINDS = {
 }
 
 
+_COMMAND_KINDS = frozenset({"strategy_submit", "strategy_cancel", "strategy_result"})
+_BOUNDED_KINDS = frozenset(
+    {
+        "account",
+        "account_position",
+        "account_open_order",
+        "execution_order",
+        "execution_trade",
+        "strategy_submit",
+        "strategy_cancel",
+        "strategy_result",
+        "strategy_account_book",
+    }
+)
+
+# ---------------------------------------------------------------------------
+# Typed parts and the service-operation registry (minor 5, acceptance G5)
+# ---------------------------------------------------------------------------
+
+#: A typed part is one registered kind nested in a v3 service envelope
+#: payload. It is encoded once by the producer and rebuilt by the receiver
+#: directly into the Base object; no base64 or second MessagePack layer.
+TYPED_PART_SCHEMA = "bt_api.wire.v1.part"
+_TYPED_PART_VERSION = 1
+_TYPED_PART_FIELDS = frozenset(
+    {"schema_id", "schema_version", "major", "minor", "registry_digest", "kind", "data"}
+)
+#: Stream kinds (tick, bar, fill) travel as stream messages, not RPC parts.
+_TYPED_PART_KINDS = _BOUNDED_KINDS
+
+#: Service operations whose business payload is a typed contract. ``form``
+#: names the nested representation and ``reply``/``request`` the kind. Any
+#: generic representation of these payloads must be refused by receivers.
+TYPED_SERVICE_OPERATIONS: Mapping[str, Mapping[str, str]] = MappingProxyType(
+    {
+        "account.snapshot.typed": MappingProxyType(
+            {
+                "reply": "account",
+                "form": "account_observation_map",
+                "location": "result.snapshot.payload.observation",
+            }
+        ),
+        "execution.account_books.query": MappingProxyType(
+            {
+                "reply": "strategy_account_book",
+                "form": "typed_part",
+                "location": "result.strategy_account_book",
+                "views": "OWNER_BOOK",
+            }
+        ),
+        # Iteration 60 WP6: the order-entry request is one typed command part
+        # and the reply carries a typed result bound to its fingerprint.
+        "orders.submit": MappingProxyType(
+            {
+                "request": "strategy_submit",
+                "reply": "strategy_result",
+                "form": "typed_part",
+                "location": "arguments.command",
+                "reply_location": "result.command_result",
+            }
+        ),
+        "orders.cancel": MappingProxyType(
+            {
+                "request": "strategy_cancel",
+                "reply": "strategy_result",
+                "form": "typed_part",
+                "location": "arguments.command",
+                "reply_location": "result.command_result",
+            }
+        ),
+    }
+)
+
+#: Operations that still use generic MessagePack maps, each with the reason.
+#: Exact names take precedence over ``family.*`` entries. Together with
+#: :data:`TYPED_SERVICE_OPERATIONS` this covers the SDK/Gateway service
+#: surface; :func:`service_operation_contract` refuses an unlisted operation.
+GENERIC_SERVICE_OPERATIONS: Mapping[str, str] = MappingProxyType(
+    {
+        "service.*": "control plane; discover carries the typed contract declaration",
+        "account.snapshot": "legacy generic form of account.snapshot.typed; explicit opt-in only",
+        "account.read_after": "journal event pages; state/view-delta events have no typed kind",
+        "account.head": "cursor control; no business payload",
+        "account.progress": "consumer cursor control; no business payload",
+        "account.ack": "consumer cursor control; no business payload",
+        "account.configuration": "deployment metadata; no typed kind",
+        "account.server_time_probe": "clock probe; no typed kind",
+        "account.instrument_metadata": "provider metadata parsed by the provider parser",
+        "account.reconciliation_cut": "reconciliation diagnostic; no typed kind",
+        "execution.account_books.query:non-owner-views": "recovery/journal views; no typed kind",
+        "orders.submit:binding-less-hosts": (
+            "legacy SDK request map, only on hosts without trusted typed command bindings"
+        ),
+        "orders.cancel:binding-less-hosts": (
+            "legacy SDK request map, only on hosts without trusted typed command bindings"
+        ),
+        "orders.*": "durable execution records, group legs and recovery references; no typed kind",
+        "market.*": "market event/read envelopes; tick/bar stream kinds are not used on this path",
+        "analysis.*": "research analysis jobs; no typed kind",
+        "events.*": "framework event append; no typed kind",
+        "groups.*": "group order workflows; no typed kind",
+        "monitor.*": "monitor control and reads; no typed kind",
+        "owner.*": "account owner control; no typed kind",
+        "paper.*": "paper import workflow; no typed kind",
+        "policy.*": "risk policy and budget workflow; no typed kind",
+        "reservations.*": "reservation workflow; no typed kind",
+        "risk.*": "risk journal reads; no typed kind",
+        "telemetry.*": "telemetry; no typed kind",
+    }
+)
+
+
+def service_operation_contract(operation: str) -> tuple[str, Any]:
+    """Return ``("typed", entry)`` or ``("generic", reason)`` for an operation.
+
+    An operation in neither registry has no approved wire contract and is
+    refused with ``WIRE_OPERATION_UNREGISTERED``.
+    """
+
+    if type(operation) is not str or not operation:
+        raise WireCodecError("WIRE_OPERATION_UNREGISTERED")
+    if operation in TYPED_SERVICE_OPERATIONS:
+        return "typed", TYPED_SERVICE_OPERATIONS[operation]
+    if operation in GENERIC_SERVICE_OPERATIONS:
+        return "generic", GENERIC_SERVICE_OPERATIONS[operation]
+    family = operation.split(".", 1)[0] + ".*"
+    if family in GENERIC_SERVICE_OPERATIONS:
+        return "generic", GENERIC_SERVICE_OPERATIONS[family]
+    raise WireCodecError("WIRE_OPERATION_UNREGISTERED")
+
+
 def schema_digest() -> str:
     """Digest of the v1 kind registry, compared in the connection handshake.
 
@@ -871,12 +1097,13 @@ def schema_digest() -> str:
                 },
             },
             "strategy_submit": {
-                "introduced_minor": 3,
-                "fields": [f.name for f in dataclasses.fields(StrategySubmitCommand)],
+                "introduced_minor": 5,
+                "fields": [f.name for f in dataclasses.fields(StrategySubmitCommand)]
+                + ["semantic_fingerprint"],
                 "account_fields": sorted(AccountKey._FIELDS),
                 "instrument_fields": list(_INSTRUMENT_FIELDS),
                 "decimal_fields": ["quantity", "limit_price"],
-                "semantics_revision": 1,
+                "semantics_revision": 2,
                 "semantics": {
                     "sides": ["buy", "sell"],
                     "order_types": ["market", "limit"],
@@ -887,20 +1114,26 @@ def schema_digest() -> str:
                     "position_side": ["long", "short", "net", None],
                     "position_effect": ["open", "close", "close_today", "close_yesterday", None],
                     "position_mode": ["net", "dual_side", None],
+                    "position_bucket": ["today", "yesterday", None],
                     "hedge_class": ["speculation", "arbitrage", "hedge", None],
                     "reduce_only": "exact-bool; true-conflicts-with-explicit-open-effect",
                     "deadline": "optional-utc-epoch-ns; None-does-not-prove-validity",
+                    "tags": "at-most-16-sorted-unique-reference-keys; text-values",
+                    "semantic_fingerprint": "sha256-of-kind-account-route-strategy-idempotency"
+                    "-and-business-fields; excludes-request_id-and-run_id; recomputed-on-decode",
                     "authorization": "not-provided; source-scope-and-idempotency-must-be-verified",
                     "unrepresentable_fields": "must-be-rejected-by-converter-never-dropped",
                 },
             },
             "strategy_cancel": {
-                "introduced_minor": 3,
-                "fields": [f.name for f in dataclasses.fields(StrategyCancelCommand)],
+                "introduced_minor": 5,
+                "fields": [f.name for f in dataclasses.fields(StrategyCancelCommand)]
+                + ["semantic_fingerprint"],
                 "account_fields": sorted(AccountKey._FIELDS),
                 "instrument_fields": list(_INSTRUMENT_FIELDS),
-                "semantics_revision": 1,
-                "semantics": "client-order-id-required; no-authority-or-provider-identity-proof",
+                "semantics_revision": 2,
+                "semantics": "client-order-id-required; no-authority-or-provider-identity-proof; "
+                "semantic-fingerprint-recomputed-on-decode",
             },
             "strategy_account_book": {
                 "introduced_minor": 4,
@@ -919,18 +1152,32 @@ def schema_digest() -> str:
                 },
             },
             "strategy_result": {
-                "introduced_minor": 3,
+                "introduced_minor": 5,
                 "fields": [f.name for f in dataclasses.fields(StrategyCommandResult)],
                 "account_fields": sorted(AccountKey._FIELDS),
-                "semantics_revision": 1,
+                "semantics_revision": 2,
                 "semantics": {
                     "operation": ["submit", "cancel"],
                     "outcome": ["unknown", "accepted", "rejected"],
                     "accepted": "acknowledgement-only-not-terminal-or-authentication-proof",
                     "unknown": "not-safe-resubmit-or-rejection",
                     "observed_at": "optional-utc-epoch-ns-with-optional-source-precision-ns",
+                    "command_fingerprint": "semantic-fingerprint-of-the-answered-command",
                 },
             },
+        },
+        "typed_part": {
+            "schema_id": TYPED_PART_SCHEMA,
+            "schema_version": _TYPED_PART_VERSION,
+            "fields": sorted(_TYPED_PART_FIELDS),
+            "kinds": sorted(_TYPED_PART_KINDS),
+        },
+        "service_operations": {
+            "typed": {
+                name: dict(sorted(entry.items()))
+                for name, entry in sorted(TYPED_SERVICE_OPERATIONS.items())
+            },
+            "generic": dict(sorted(GENERIC_SERVICE_OPERATIONS.items())),
         },
     }
     blob = json.dumps(registry, sort_keys=True, separators=(",", ":")).encode()
@@ -1023,7 +1270,7 @@ def encode_message(
     }
     if extensions:
         message["ext"] = _check_extensions(extensions)
-    if kind in {"account", "account_position", "account_open_order", "execution_order", "execution_trade", "strategy_submit", "strategy_cancel", "strategy_result", "strategy_account_book"}:
+    if kind in _BOUNDED_KINDS:
         _check_values(message)
         _check_account_wire_bounds(message)
     data = _msgpack().packb(message, use_bin_type=True)
@@ -1166,15 +1413,120 @@ def account_observation_from_typed_map(value: Any) -> AccountObservation:
         or raw["schema_version"] != _ACCOUNT_OBSERVATION_MAP_VERSION
         or type(raw["major"]) is not int
         or raw["major"] != SUPPORTED_MAJOR
-        or type(raw["minor"]) is not int
+    ):
+        raise WireCodecError("WIRE_SCHEMA_UNSUPPORTED")
+    if (
+        type(raw["minor"]) is not int
         or raw["minor"] != SUPPORTED_MINOR
         or type(raw["registry_digest"]) is not str
         or raw["registry_digest"] != schema_digest()
     ):
-        raise WireCodecError("WIRE_SCHEMA_UNSUPPORTED")
+        # Another typed minor or registry: explicit refusal, never a fallback.
+        raise WireCodecError("WIRE_TYPED_CONTRACT_MISMATCH")
     if type(raw["data"]) is not dict:
         raise WireCodecError("WIRE_PAYLOAD_INVALID")
     return _decode_account(raw["data"])
+
+
+def encode_typed_part(kind: str, payload: Any) -> dict[str, Any]:
+    """Encode one Base object as a typed part for a v3 envelope payload.
+
+    The part names this receiver contract (schema, major, minor and registry
+    digest). It is plain data: it does not authenticate the producer.
+    """
+
+    if type(kind) is not str or kind not in _TYPED_PART_KINDS:
+        raise WireCodecError("WIRE_KIND_INVALID")
+    entry = _KINDS[kind]
+    if type(payload) is not entry[0]:
+        raise WireCodecError("WIRE_KIND_INVALID")
+    part = {
+        "schema_id": TYPED_PART_SCHEMA,
+        "schema_version": _TYPED_PART_VERSION,
+        "major": SUPPORTED_MAJOR,
+        "minor": SUPPORTED_MINOR,
+        "registry_digest": schema_digest(),
+        "kind": kind,
+        "data": entry[1](payload),
+    }
+    _check_typed_map_bounds(part)
+    return part
+
+
+def decode_typed_part(value: Any, *, kind: str) -> Any:
+    """Rebuild the Base object of one typed part of the expected ``kind``.
+
+    A part produced against another typed contract (minor or registry digest)
+    is refused with ``WIRE_TYPED_CONTRACT_MISMATCH``; there is no generic
+    fallback. Accepts the frozen form of a decoded service envelope.
+    """
+
+    if type(kind) is not str or kind not in _TYPED_PART_KINDS:
+        raise WireCodecError("WIRE_KIND_INVALID")
+    raw = _plain_typed_map(value)
+    if type(raw) is not dict or set(raw) != _TYPED_PART_FIELDS:
+        raise WireCodecError("WIRE_FIELD_SET_INVALID")
+    _check_typed_map_bounds(raw)
+    if raw["schema_id"] != TYPED_PART_SCHEMA or raw["schema_version"] != _TYPED_PART_VERSION:
+        raise WireCodecError("WIRE_SCHEMA_UNSUPPORTED")
+    if type(raw["schema_version"]) is not int or type(raw["major"]) is not int:
+        raise WireCodecError("WIRE_SCHEMA_UNSUPPORTED")
+    if raw["major"] != SUPPORTED_MAJOR:
+        raise WireCodecError("WIRE_MAJOR_UNSUPPORTED")
+    if (
+        type(raw["minor"]) is not int
+        or raw["minor"] != SUPPORTED_MINOR
+        or type(raw["registry_digest"]) is not str
+        or raw["registry_digest"] != schema_digest()
+    ):
+        raise WireCodecError("WIRE_TYPED_CONTRACT_MISMATCH")
+    if raw["kind"] != kind:
+        raise WireCodecError("WIRE_KIND_INVALID")
+    if type(raw["data"]) is not dict:
+        raise WireCodecError("WIRE_PAYLOAD_INVALID")
+    try:
+        return _KINDS[kind][2](raw["data"])
+    except WireCodecError:
+        raise
+    except Exception:
+        raise WireCodecError("WIRE_PAYLOAD_INVALID") from None
+
+
+_DECLARATION_FIELDS = frozenset({"schema_id", "major", "minor", "registry_digest"})
+
+
+def typed_contract_declaration() -> dict[str, Any]:
+    """This peer's typed contract, advertised in ``service.discover``."""
+
+    return {
+        "schema_id": SCHEMA_ID,
+        "major": SUPPORTED_MAJOR,
+        "minor": SUPPORTED_MINOR,
+        "registry_digest": schema_digest(),
+    }
+
+
+def check_typed_contract_declaration(value: Any) -> None:
+    """Refuse a peer whose typed contract differs from this one.
+
+    Equal contracts are required: there is no downgrade to an older minor and
+    no fallback to generic maps. ``WIRE_TYPED_CONTRACT_INVALID`` reports a
+    malformed declaration and ``WIRE_TYPED_CONTRACT_MISMATCH`` any difference.
+    """
+
+    if type(value) is MappingProxyType:
+        value = dict(value)
+    if type(value) is not dict or set(value) != _DECLARATION_FIELDS:
+        raise WireCodecError("WIRE_TYPED_CONTRACT_INVALID")
+    if (
+        type(value["schema_id"]) is not str
+        or type(value["major"]) is not int
+        or type(value["minor"]) is not int
+        or type(value["registry_digest"]) is not str
+    ):
+        raise WireCodecError("WIRE_TYPED_CONTRACT_INVALID")
+    if value != typed_contract_declaration():
+        raise WireCodecError("WIRE_TYPED_CONTRACT_MISMATCH")
 
 
 def decode_message(
@@ -1237,7 +1589,10 @@ def decode_message(
         raise WireCodecError("WIRE_FIELD_SET_INVALID")
     if message["kind"] in {"account", "account_position", "account_open_order"} and minor < 2:
         raise WireCodecError("WIRE_MINOR_UNSUPPORTED")
-    if message["kind"] in {"execution_order", "execution_trade", "strategy_submit", "strategy_cancel", "strategy_result"} and minor < 3:
+    if message["kind"] in {"execution_order", "execution_trade"} and minor < 3:
+        raise WireCodecError("WIRE_MINOR_UNSUPPORTED")
+    if message["kind"] in _COMMAND_KINDS and minor < 5:
+        # The minor-3 command shape had no fingerprint or SDK request fields.
         raise WireCodecError("WIRE_MINOR_UNSUPPORTED")
     if message["kind"] == "strategy_account_book" and minor < 4:
         raise WireCodecError("WIRE_MINOR_UNSUPPORTED")

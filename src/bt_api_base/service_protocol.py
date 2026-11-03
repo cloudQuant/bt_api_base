@@ -9,10 +9,15 @@ MessagePack, commands included). An envelope on the wire is one MessagePack
 map with exactly ``contract``, ``header`` and ``payload``:
 
 * ``contract`` is :func:`wire_contract_digest`, the digest of this envelope
-  contract together with the typed market/fill registry of
-  ``wire_codec_v1``. A peer built against a different contract is refused on
-  every message (``unsupported_version``), so mixed deployments cannot
-  silently reinterpret fields; v2 JSON envelopes are refused the same way.
+  contract together with the typed schema id and major of ``wire_codec_v1``.
+  A peer built against a different envelope contract is refused on every
+  message (``unsupported_version``); v2 JSON envelopes are refused the same
+  way. The typed *minor and registry digest* are negotiated explicitly in
+  ``service.discover`` (``typed_contract``, see
+  ``wire_codec_v1.check_typed_contract_declaration``): a peer with another
+  typed registry is refused at connect with ``TYPED_CONTRACT_MISMATCH``
+  instead of timing out, and every typed part additionally carries its
+  registry digest, so typed content is never interpreted across versions.
 * Strict decoding: one complete object (trailing bytes rejected), text map
   keys only, duplicate keys rejected, binary and extension types rejected,
   only finite floats, bounded size and depth. Maps are written with sorted
@@ -563,7 +568,7 @@ def _canonical_frozen(value: JsonValue) -> Any:
 
 
 def _contract_digest() -> str:
-    from bt_api_base.wire_codec_v1 import schema_digest
+    from bt_api_base.wire_codec_v1 import SCHEMA_ID, SUPPORTED_MAJOR
 
     contract = {
         "protocol_version": WIRE_PROTOCOL_VERSION,
@@ -575,7 +580,15 @@ def _contract_digest() -> str:
         "roles": sorted(role.value for role in WireRole),
         "kinds": sorted(kind.value for kind in WireMessageKind),
         "max_depth": MAX_JSON_DEPTH,
-        "typed_registry": schema_digest(),
+        # Iteration 60.08 (G5): the typed minor and registry digest are
+        # negotiated in service.discover, which makes a typed mismatch an
+        # explicit connect-time refusal. A typed major change still fences
+        # every envelope.
+        "typed_contract": {
+            "schema_id": SCHEMA_ID,
+            "major": SUPPORTED_MAJOR,
+            "negotiation": "service.discover.typed_contract",
+        },
     }
     blob = json.dumps(contract, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(blob).hexdigest()

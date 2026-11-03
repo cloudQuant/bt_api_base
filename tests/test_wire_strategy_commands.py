@@ -74,6 +74,7 @@ def _result(outcome="unknown"):
         None,
         None,
         None,
+        submit.semantic_fingerprint,
     )
 
 
@@ -88,7 +89,7 @@ def _result(outcome="unknown"):
 def test_command_roundtrip_and_version_fence(kind, value):
     frame = encode_message(kind, value, stream=_STREAM)
     result = decode_message(frame)
-    assert result.minor == 4  # produced at the current minor; introduced in 3
+    assert result.minor == 5  # produced at the current minor; revised in 5
     assert type(result.payload) is type(value)
     assert result.payload.account_key == value.account_key
     assert result.payload.request_id == value.request_id
@@ -102,12 +103,14 @@ def test_command_roundtrip_and_version_fence(kind, value):
         assert result.payload.outcome == "unknown"
         assert not hasattr(result.payload, "order_terminal")
         assert not hasattr(result.payload, "authorized")
-    wire = msgpack.unpackb(frame, raw=False)
-    wire["minor"] = 2
-    with pytest.raises(WireCodecError, match="WIRE_MINOR_UNSUPPORTED"):
-        decode_message(msgpack.packb(wire, use_bin_type=True))
-    with pytest.raises(WireCodecError, match="WIRE_MINOR_UNSUPPORTED"):
-        decode_message(frame, supported_minor=2)
+    for older in (2, 3, 4):
+        # Minor 3/4 had the command shape without fingerprint and SDK fields.
+        wire = msgpack.unpackb(frame, raw=False)
+        wire["minor"] = older
+        with pytest.raises(WireCodecError, match="WIRE_MINOR_UNSUPPORTED"):
+            decode_message(msgpack.packb(wire, use_bin_type=True))
+        with pytest.raises(WireCodecError, match="WIRE_MINOR_UNSUPPORTED"):
+            decode_message(frame, supported_minor=older)
 
 
 @pytest.mark.parametrize("outcome", ["unknown", "accepted", "rejected"])
@@ -203,7 +206,9 @@ def test_command_id_and_parameter_tampering_remains_visible():
     assert first.request_id == second.request_id
     assert first.idempotency_key == second.idempotency_key
     assert first.quantity != second.quantity
-    # This DTO does not implement durable same-ID/content deduplication.
+    # Same idempotency key, different content: the fingerprints disagree, so a
+    # durable same-ID check can refuse the second command (plan §7.4).
+    assert first.semantic_fingerprint != second.semantic_fingerprint
 
 
 @pytest.mark.parametrize("where", ["command", "account", "instrument"])
@@ -232,3 +237,129 @@ def test_command_roundtrips_across_a_fresh_process():
     assert decoded.payload.request_id == value.request_id
     assert decoded.payload.account_key == value.account_key
     assert decoded.payload.quantity == "123456789012345.12345"
+
+
+# ---------------------------------------------------------------------------
+# Minor 5: SDK request fields and the semantic fingerprint (60.08, G5)
+# ---------------------------------------------------------------------------
+
+
+def _full_submit():
+    return replace(
+        _submit(),
+        position_side="long",
+        position_effect="close_today",
+        position_bucket="today",
+        reduce_only=True,
+        signal_id="signal-a",
+        metadata_version="meta-7",
+        tags=(("alpha", "x"), ("desk", "a b")),
+        valid_until_utc_ns=1_762_131_600_123_456_789,
+    )
+
+
+def test_sdk_request_fields_roundtrip_exactly():
+    value = _full_submit()
+    decoded = decode_message(encode_message("strategy_submit", value, stream=_STREAM)).payload
+    assert decoded.signal_id == "signal-a"
+    assert decoded.metadata_version == "meta-7"
+    assert decoded.tags == (("alpha", "x"), ("desk", "a b"))
+    assert decoded.position_bucket == "today"
+    # Nanosecond deadline survives exactly (no float, no rounding).
+    assert decoded.valid_until_utc_ns == 1_762_131_600_123_456_789
+    assert decoded.semantic_fingerprint == value.semantic_fingerprint
+    cancel = replace(_cancel(), metadata_version="meta-7", tags=(("k", "v"),))
+    decoded_cancel = decode_message(
+        encode_message("strategy_cancel", cancel, stream=_STREAM)
+    ).payload
+    assert decoded_cancel == cancel
+    assert decoded_cancel.semantic_fingerprint == cancel.semantic_fingerprint
+
+
+def test_fingerprint_is_semantic_and_excludes_only_attempt_identity():
+    base = _full_submit()
+    fingerprint = base.semantic_fingerprint
+    assert len(fingerprint) == 64 and set(fingerprint) <= set("0123456789abcdef")
+    # Not content: the attempt id and the sending run.
+    assert replace(base, request_id="request-b").semantic_fingerprint == fingerprint
+    assert replace(base, run_id="run-b").semantic_fingerprint == fingerprint
+    # Equivalent decimal spelling is the same content.
+    assert replace(base, limit_price="10.25").semantic_fingerprint == fingerprint
+    # Every covered change differs.
+    for changes in (
+        {"quantity": "2"},
+        {"limit_price": "10.26"},
+        {"route": "other-route"},
+        {"strategy_ref": "strategy-b"},
+        {"idempotency_key": "idempotency-b"},
+        {"client_order_id": "client-b"},
+        {"side": "sell"},
+        {"signal_id": "signal-b"},
+        {"metadata_version": "meta-8"},
+        {"tags": (("alpha", "y"), ("desk", "a b"))},
+        {"tags": ()},
+        {"valid_until_utc_ns": None},
+        {"position_bucket": None},
+        {"time_in_force": "IOC"},
+    ):
+        assert replace(base, **changes).semantic_fingerprint != fingerprint, changes
+    other_account = replace(base.account_key, account_id="other-account")
+    assert replace(base, account_key=other_account).semantic_fingerprint != fingerprint
+    # A cancel and a submit never share a fingerprint.
+    assert _cancel().semantic_fingerprint != _submit().semantic_fingerprint
+
+
+def test_decoder_recomputes_the_fingerprint_and_refuses_tampering():
+    frame = encode_message("strategy_submit", _full_submit(), stream=_STREAM)
+    wire = msgpack.unpackb(frame, raw=False)
+    assert wire["data"]["semantic_fingerprint"] == _full_submit().semantic_fingerprint
+    tampered = msgpack.unpackb(frame, raw=False)
+    tampered["data"]["quantity"] = "1"
+    with pytest.raises(WireCodecError, match="WIRE_COMMAND_FINGERPRINT_MISMATCH"):
+        decode_message(msgpack.packb(tampered, use_bin_type=True))
+    tampered = msgpack.unpackb(frame, raw=False)
+    tampered["data"]["tags"]["alpha"] = "changed"
+    with pytest.raises(WireCodecError, match="WIRE_COMMAND_FINGERPRINT_MISMATCH"):
+        decode_message(msgpack.packb(tampered, use_bin_type=True))
+    missing = msgpack.unpackb(frame, raw=False)
+    del missing["data"]["semantic_fingerprint"]
+    with pytest.raises(WireCodecError, match="WIRE_PAYLOAD_INVALID"):
+        decode_message(msgpack.packb(missing, use_bin_type=True))
+    # The attempt id is outside the fingerprint and may differ per attempt.
+    retried = msgpack.unpackb(frame, raw=False)
+    retried["data"]["request_id"] = "request-retry"
+    assert decode_message(msgpack.packb(retried, use_bin_type=True)).payload.request_id == (
+        "request-retry"
+    )
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"position_bucket": "all"},
+        {"position_bucket": "today", "position_side": "net"},
+        {"position_bucket": "today", "position_side": None},
+        {"position_bucket": "today", "position_effect": "open", "reduce_only": False},
+        {"tags": {"a": "b"}},
+        {"tags": (("b", "1"), ("a", "2"))},
+        {"tags": (("a", "1"), ("a", "2"))},
+        {"tags": (("bad key", "1"),)},
+        {"tags": (("k", " padded"),)},
+        {"tags": tuple((f"k{i:02d}", "v") for i in range(17))},
+        {"signal_id": ""},
+        {"metadata_version": " meta"},
+    ],
+)
+def test_minor_five_fields_reject_unsupported_values(changes):
+    with pytest.raises((TypeError, ValueError)):
+        replace(_full_submit(), **changes)
+
+
+def test_result_carries_the_answered_command_fingerprint():
+    result = _result()
+    assert result.command_fingerprint == _submit().semantic_fingerprint
+    decoded = decode_message(encode_message("strategy_result", result, stream=_STREAM)).payload
+    assert decoded.command_fingerprint == result.command_fingerprint
+    for bad in ("", "A" * 64, "a" * 63, None, 1):
+        with pytest.raises((TypeError, ValueError)):
+            replace(result, command_fingerprint=bad)

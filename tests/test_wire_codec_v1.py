@@ -114,7 +114,7 @@ def test_tick_round_trip_rebuilds_the_same_frozen_container():
     assert type(decoded.payload) is MarketTickPayload
     assert decoded.payload == payload
     assert decoded.stream == STREAM
-    assert decoded.minor == SUPPORTED_MINOR == 4
+    assert decoded.minor == SUPPORTED_MINOR == 5
 
 
 @pytest.mark.parametrize("invalid_kind", [[], {}, 1, None, True])
@@ -287,7 +287,7 @@ def test_size_depth_and_integer_limits():
     [
         ({"schema_id": "other"}, "WIRE_SCHEMA_UNSUPPORTED"),
         ({"major": 2}, "WIRE_MAJOR_UNSUPPORTED"),
-        ({"minor": 5}, "WIRE_MINOR_UNSUPPORTED"),
+        ({"minor": 6}, "WIRE_MINOR_UNSUPPORTED"),
         ({"kind": "order"}, "WIRE_KIND_INVALID"),
         ({"unexpected": 1}, "WIRE_FIELD_SET_INVALID"),
     ],

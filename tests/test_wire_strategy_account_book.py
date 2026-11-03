@@ -80,7 +80,7 @@ def _book(*, financial=True, **overrides):
 def test_round_trip_rebuilds_an_equal_snapshot(financial):
     book = _book(financial=financial)
     result = decode_message(encode_message("strategy_account_book", book, stream=_STREAM))
-    assert result.kind == "strategy_account_book" and result.minor == SUPPORTED_MINOR == 4
+    assert result.kind == "strategy_account_book" and result.minor == SUPPORTED_MINOR == 5
     assert type(result.payload) is StrategyAccountBookSnapshot
     assert result.payload == book
     assert result.payload.positions["SIM:Y"] == Decimal("-1.5")

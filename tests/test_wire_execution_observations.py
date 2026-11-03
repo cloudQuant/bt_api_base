@@ -73,7 +73,7 @@ def test_order_observation_preserves_state_and_scope(status):
     value = AccountExecutionOrderObservation(account, row)
     frame = encode_message("execution_order", value, stream=_STREAM)
     result = decode_message(frame)
-    assert result.minor == 4  # produced at the current minor; introduced in 3
+    assert result.minor == 5  # produced at the current minor; introduced in 3
     assert result.payload.account_key == account
     assert result.payload.order.status == status
     assert result.payload.order.quantity == "123456789012345.12345"

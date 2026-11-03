@@ -13,7 +13,6 @@ from dataclasses import replace
 import msgpack
 import pytest
 
-import bt_api_base.service_protocol as service_protocol
 import bt_api_base.wire_codec_v1 as codec
 from bt_api_base.account_protocol import (
     AccountBalance,
@@ -187,9 +186,15 @@ def test_old_minor_rejects_account_frame_and_digest_changes(monkeypatch):
         json.dumps(previous, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
     assert schema_digest() != old_digest
-    current_service_digest = service_protocol._contract_digest()
+    # 60.08: the registry digest is negotiated at connect (typed_contract);
+    # a peer still declaring the old registry is refused explicitly.
+    current_declaration = codec.typed_contract_declaration()
     monkeypatch.setattr(codec, "schema_digest", lambda: old_digest)
-    assert service_protocol._contract_digest() != current_service_digest
+    old_declaration = codec.typed_contract_declaration()
+    assert old_declaration != current_declaration
+    monkeypatch.undo()
+    with pytest.raises(WireCodecError, match="WIRE_TYPED_CONTRACT_MISMATCH"):
+        codec.check_typed_contract_declaration(old_declaration)
 
 
 @pytest.mark.parametrize(
@@ -197,13 +202,15 @@ def test_old_minor_rejects_account_frame_and_digest_changes(monkeypatch):
 )
 def test_account_semantic_revision_changes_wire_and_service_digest(monkeypatch, section):
     old_wire = schema_digest()
-    old_service = service_protocol._contract_digest()
+    old_declaration = codec.typed_contract_declaration()
     updated = deepcopy(codec._ACCOUNT_WIRE_SEMANTICS)
     updated["revision"] += 1
     updated[section]["reviewed_semantic_revision"] = 2
     monkeypatch.setattr(codec, "_ACCOUNT_WIRE_SEMANTICS", updated)
     assert schema_digest() != old_wire
-    assert service_protocol._contract_digest() != old_service
+    # The semantic revision is fenced by the connect-time typed negotiation.
+    with pytest.raises(WireCodecError, match="WIRE_TYPED_CONTRACT_MISMATCH"):
+        codec.check_typed_contract_declaration(old_declaration)
 
 
 def test_account_codec_rejects_unrepresentable_decimal_and_oversized_array():
@@ -263,7 +270,7 @@ def test_account_encode_rejects_non_utf8_stream_identity_with_finite_error():
         encode_message("account", _observation(), stream=stream)
 
 
-@pytest.mark.parametrize("unsupported", [-1, True, 5, "2", None])
+@pytest.mark.parametrize("unsupported", [-1, True, 6, "2", None])
 def test_decoder_cannot_be_configured_to_accept_unknown_minor(unsupported):
     with pytest.raises(WireCodecError, match="WIRE_MINOR_UNSUPPORTED"):
         decode_message(_frame(), supported_minor=unsupported)
