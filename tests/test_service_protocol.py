@@ -13,6 +13,7 @@ from pathlib import Path
 import msgpack
 import pytest
 
+import bt_api_base.service_protocol as service_protocol
 from bt_api_base.service_protocol import (
     MAX_WIRE_MESSAGE_BYTES,
     EventPublisher,
@@ -130,6 +131,27 @@ def test_request_round_trip_freezes_nested_payload_and_scope_input() -> None:
         restored.payload["new"] = "value"  # type: ignore[index]
     with pytest.raises(TypeError):
         restored.payload["nested"]["new"] = "value"  # type: ignore[index]
+
+
+def test_pure_python_msgpack_decodes_and_checks_duplicate_keys(monkeypatch) -> None:
+    # msgpack.fallback supplies object_pairs_hook with an iterator, unlike
+    # its C backend. Exercise decoding through the public entry point.
+    from msgpack import fallback
+
+    monkeypatch.setattr(msgpack, "unpackb", fallback.unpackb)
+    envelope = _envelope(payload={"nested": {"amount": 1}})
+    assert decode_envelope(encode_envelope(envelope)) == envelope
+
+    duplicate = b"\x82\xa1x\x01\xa1x\x02"
+    with pytest.raises(WireValidationError) as error:
+        decode_envelope(duplicate)
+    _assert_error(error.value, WireErrorCode.DUPLICATE_KEY, WireField.MESSAGE)
+
+
+def test_map_validation_preserves_first_error_with_unhashable_keys() -> None:
+    pairs = iter([("duplicate", 1), ("duplicate", 2), ([], 3)])
+    with pytest.raises(service_protocol._DuplicateKeyError):
+        service_protocol._unique_map(pairs)
 
 
 def test_group_and_child_scope_shapes_do_not_invent_a_group_account() -> None:
@@ -392,6 +414,42 @@ def test_v3_refuses_v2_json_and_a_different_contract() -> None:
         contract_error.value, WireErrorCode.UNSUPPORTED_VERSION, WireField.PROTOCOL_VERSION
     )
     assert wire_value["contract"] == wire_contract_digest()
+
+
+def test_envelope_rejects_pre_nullable_tick_contract_digest() -> None:
+    wire_value = _wire(_envelope())
+    old_digest = "165217200b46b6dcc275dbbcbd8bad55b049f4785996f59ea172ee6f769d3c18"
+    assert wire_contract_digest() != old_digest
+    wire_value["contract"] = old_digest
+    with pytest.raises(WireValidationError) as error:
+        decode_envelope(_pack(wire_value))
+    _assert_error(error.value, WireErrorCode.UNSUPPORTED_VERSION, WireField.PROTOCOL_VERSION)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"z": None, "a": [1, True, 1.5, "中文"], "ä": {"b": 2, "a": 1}},
+        {"1": {"2": [{"z": [False, None, {"c": "x", "a": "y"}]}]}},
+    ],
+)
+def test_fused_payload_encoding_matches_previous_canonical_bytes(payload) -> None:
+    envelope = _envelope(payload=payload)
+    reference = envelope_to_wire_mapping(envelope)
+    reference["contract"] = wire_contract_digest()
+    expected = msgpack.packb(service_protocol._canonical(reference), use_bin_type=True)
+    assert encode_envelope(envelope) == expected
+    assert decode_envelope(expected) == envelope
+
+
+def test_fused_encoding_preserves_canonical_bytes_for_altered_envelope() -> None:
+    envelope = _envelope()
+    object.__setattr__(envelope, "payload", {"z": [1, {"b": 2, "a": 1}], "a": 0})
+    reference = envelope_to_wire_mapping(envelope)
+    reference["contract"] = wire_contract_digest()
+    expected = msgpack.packb(service_protocol._canonical(reference), use_bin_type=True)
+    assert encode_envelope(envelope) == expected
 
 
 def test_encoding_is_canonical() -> None:

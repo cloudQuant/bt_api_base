@@ -12,7 +12,7 @@ from typing import Any, ClassVar, Optional
 from bt_api_base.market_protocol import MarketInstrumentKey, MarketSourceDescriptor
 
 MARKET_TICK_SCHEMA = "sdk.market.tick"
-MARKET_TICK_SCHEMA_VERSION = 1
+MARKET_TICK_SCHEMA_VERSION = 2
 
 
 class MarketTickContractError(ValueError):
@@ -145,7 +145,9 @@ class MarketTickPayload:
 
     This payload is data, not an authenticated event. The consuming SDK must
     bind it to the authenticated source descriptor and wire cursor before it
-    can be passed to Backtrader.
+    can be passed to Backtrader. Schema v2 allows a missing quality rule as
+    ``None`` for observation only; it can never be execution eligible. Valid
+    schema v1 mappings remain readable and require a non-empty rule reference.
     """
 
     instrument: MarketInstrumentKey
@@ -170,7 +172,7 @@ class MarketTickPayload:
     received_at_utc: Optional[str]
     received_monotonic_ns: Optional[int]
     provider_source: str
-    quality_contract_ref: str
+    quality_contract_ref: Optional[str]
     provider_connection_generation: int
     provider_sequence: int
     provider_subscription_epoch: int
@@ -256,12 +258,12 @@ class MarketTickPayload:
             "volume_quality",
             "continuity_status",
             "provider_source",
-            "quality_contract_ref",
             "clock_domain_id",
             "clock_source_session_id",
             "clock_source",
         ):
             _text(getattr(self, name), name)
+        _text(self.quality_contract_ref, "quality_contract_ref", optional=True)
         object.__setattr__(self, "trading_date", _date_text(self.trading_date, "trading_date"))
         object.__setattr__(
             self, "event_session_date", _date_text(self.event_session_date, "event_session_date")
@@ -332,7 +334,8 @@ class MarketTickPayload:
             ):
                 raise MarketTickContractError("MARKET_TICK_FRESHNESS_INVALID")
         if self.execution_eligible and (
-            status is not MarketFreshnessStatus.FRESH
+            self.quality_contract_ref is None
+            or status is not MarketFreshnessStatus.FRESH
             or self.source_clock_quality is not MarketClockQuality.VERIFIED
             or self.receive_clock_quality is not MarketClockQuality.VERIFIED
         ):
@@ -357,10 +360,13 @@ class MarketTickPayload:
             type(raw.get("schema")) is not str
             or raw.get("schema") != MARKET_TICK_SCHEMA
             or type(raw.get("schema_version")) is not int
-            or raw.get("schema_version") != MARKET_TICK_SCHEMA_VERSION
+            or raw.get("schema_version") not in (1, MARKET_TICK_SCHEMA_VERSION)
             or type(raw.get("freshness_reason_codes")) is not list
             or type(raw.get("quality_flags")) is not list
         ):
+            raise MarketTickContractError("MARKET_TICK_VALUE_INVALID")
+        # Schema v1 required a concrete rule reference; null is a v2 value.
+        if raw["schema_version"] == 1 and raw["quality_contract_ref"] is None:
             raise MarketTickContractError("MARKET_TICK_VALUE_INVALID")
         instrument = MarketInstrumentKey.from_dict(raw["instrument"])
         return cls(
@@ -571,6 +577,38 @@ class MarketTickEvent:
         )
 
 
+def market_tick_payload_from_wire(data: Any) -> "MarketTickPayload":
+    """``MarketTickPayload`` from a decoded wire envelope's (frozen) ``data``.
+
+    Decoded envelope payloads are recursively frozen (``MappingProxyType`` and
+    ``tuple``). This is exactly ``MarketTickPayload.from_dict`` applied to the
+    plain copy of ``data``: ``from_dict`` reads only top-level fields and the
+    ``instrument`` mapping, and requires the two array fields to be lists, so
+    only those two arrays are converted instead of thawing the whole tree.
+    Every validation of ``from_dict`` runs unchanged.
+    """
+
+    if not isinstance(data, Mapping):
+        raise MarketTickContractError("MARKET_TICK_FIELD_SET_INVALID")
+    raw = dict(data)
+    for name in ("freshness_reason_codes", "quality_flags"):
+        value = raw.get(name)
+        if type(value) is tuple:
+            raw[name] = [_plain_wire(item) for item in value]
+    instrument = raw.get("instrument")
+    if isinstance(instrument, Mapping) and type(instrument) is not dict:
+        raw["instrument"] = {key: _plain_wire(item) for key, item in instrument.items()}
+    return MarketTickPayload.from_dict(raw)
+
+
+def _plain_wire(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _plain_wire(item) for key, item in value.items()}
+    if type(value) in (tuple, list):
+        return [_plain_wire(item) for item in value]
+    return value
+
+
 def bind_market_tick_event(
     data: MarketTickPayload, source: MarketSourceDescriptor, cursor: MarketEventCursor
 ) -> MarketTickEvent:
@@ -618,4 +656,5 @@ __all__ = [
     "MarketTickEvent",
     "MarketTickPayload",
     "bind_market_tick_event",
+    "market_tick_payload_from_wire",
 ]

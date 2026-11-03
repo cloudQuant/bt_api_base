@@ -26,7 +26,7 @@ import hashlib
 import json
 import math
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -130,6 +130,11 @@ def _fail(code: WireErrorCode, field: WireField) -> NoReturn:
     raise WireValidationError(code, field)
 
 
+# C0 controls, DEL and C1 controls: the same set the former per-character
+# ``ord()`` test rejected, matched in one C-level scan.
+_CONTROL_CHARACTERS = re.compile("[\x00-\x1f\x7f-\x9f]")
+
+
 def _check_text(value: Any, field: WireField) -> str:
     if type(value) is not str:
         _fail(WireErrorCode.INVALID_TYPE, field)
@@ -141,7 +146,7 @@ def _check_text(value: Any, field: WireField) -> str:
         not encoded
         or len(encoded) > MAX_REFERENCE_BYTES
         or value != value.strip()
-        or any(ord(character) < 32 or 0x7F <= ord(character) <= 0x9F for character in value)
+        or _CONTROL_CHARACTERS.search(value) is not None
     ):
         _fail(WireErrorCode.INVALID_VALUE, field)
     return value
@@ -337,32 +342,36 @@ def _freeze_payload(value: Any) -> Mapping[str, JsonValue]:
 def _freeze_json_value(value: Any, *, depth: int) -> JsonValue:
     if depth > MAX_JSON_DEPTH:
         _fail(WireErrorCode.INVALID_VALUE, WireField.PAYLOAD)
-    if value is None or type(value) is bool:
+    kind = type(value)
+    if value is None or kind is bool or kind is int:
         return value
-    if type(value) is int:
-        return value
-    if type(value) is float:
+    if kind is float:
         if not math.isfinite(value):
             _fail(WireErrorCode.NON_FINITE_NUMBER, WireField.PAYLOAD)
         return value
-    if type(value) is str:
-        try:
-            value.encode("utf-8", errors="strict")
-        except UnicodeEncodeError:
-            _fail(WireErrorCode.INVALID_VALUE, WireField.PAYLOAD)
+    if kind is str:
+        # ASCII is a strict subset of valid UTF-8; avoid encoding the many
+        # ordinary wire identifiers while still checking every non-ASCII
+        # value (including isolated surrogates) with the original rule.
+        if not value.isascii():
+            try:
+                value.encode("utf-8", errors="strict")
+            except UnicodeEncodeError:
+                _fail(WireErrorCode.INVALID_VALUE, WireField.PAYLOAD)
         return value
-    if type(value) in (dict, _MAPPING_PROXY_TYPE):
+    if kind is dict or kind is _MAPPING_PROXY_TYPE:
         frozen_items: dict[str, JsonValue] = {}
         for key, item in value.items():
             if type(key) is not str:
                 _fail(WireErrorCode.INVALID_TYPE, WireField.PAYLOAD)
-            try:
-                key.encode("utf-8", errors="strict")
-            except UnicodeEncodeError:
-                _fail(WireErrorCode.INVALID_VALUE, WireField.PAYLOAD)
+            if not key.isascii():
+                try:
+                    key.encode("utf-8", errors="strict")
+                except UnicodeEncodeError:
+                    _fail(WireErrorCode.INVALID_VALUE, WireField.PAYLOAD)
             frozen_items[key] = _freeze_json_value(item, depth=depth + 1)
         return MappingProxyType(frozen_items)
-    if type(value) in (list, tuple):
+    if kind is list or kind is tuple:
         return tuple(_freeze_json_value(item, depth=depth + 1) for item in value)
     _fail(WireErrorCode.INVALID_TYPE, WireField.PAYLOAD)
 
@@ -539,6 +548,20 @@ def _canonical(value: Any) -> Any:
     return value
 
 
+def _canonical_frozen(value: JsonValue) -> Any:
+    """Thaw a frozen payload directly into canonical key order."""
+
+    if type(value) is _MAPPING_PROXY_TYPE:
+        return {key: _canonical_frozen(value[key]) for key in sorted(value)}
+    if type(value) is tuple:
+        return [_canonical_frozen(item) for item in value]
+    # Preserve the prior thaw-then-canonical behavior even for envelopes
+    # deliberately altered outside the frozen dataclass contract.
+    if type(value) in (dict, list):
+        return _canonical(value)
+    return value
+
+
 def _contract_digest() -> str:
     from bt_api_base.wire_codec_v1 import schema_digest
 
@@ -606,10 +629,19 @@ def encode_envelope(envelope: WireEnvelope, *, max_bytes: int = MAX_WIRE_MESSAGE
     """Serialize one envelope as bounded, canonical v3 MessagePack."""
 
     max_bytes = _validate_max_bytes(max_bytes)
-    wire_value = envelope_to_wire_mapping(envelope)
-    wire_value["contract"] = wire_contract_digest()
+    if type(envelope) is not WireEnvelope:
+        _fail(WireErrorCode.INVALID_TYPE, WireField.MESSAGE)
+    header = _header_to_wire(envelope.header)
+    digest = wire_contract_digest()
     try:
-        encoded = _msgpack().packb(_canonical(wire_value), use_bin_type=True)
+        # The envelope payload is already validated and frozen. Thawing and
+        # sorting it together avoids making an intermediate unsorted tree.
+        wire_value = {
+            "contract": digest,
+            "header": _canonical(header),
+            "payload": _canonical_frozen(envelope.payload),
+        }
+        encoded = _msgpack().packb(wire_value, use_bin_type=True)
     except (TypeError, ValueError, OverflowError, RecursionError, UnicodeEncodeError):
         _fail(WireErrorCode.INVALID_VALUE, WireField.MESSAGE)
     if len(encoded) > max_bytes:
@@ -625,7 +657,22 @@ class _InvalidWireValueError(ValueError):
     pass
 
 
-def _unique_map(pairs: list[tuple[Any, Any]]) -> dict[str, Any]:
+def _unique_map(pairs: Iterable[tuple[Any, Any]]) -> dict[str, Any]:
+    # Fast path (C-level): all keys text and none repeated gives exactly the
+    # dict the checked loop below builds. Anything else takes the loop, so the
+    # first offending pair still decides the error, as before.
+    # The pure-Python msgpack backend supplies a generator; the C backend
+    # supplies a list. Do not exhaust generators before the checked path.
+    if not isinstance(pairs, list):
+        pairs = list(pairs)
+    try:
+        fast = dict(pairs)
+    except TypeError:
+        # An unhashable key is rejected in order by the checked loop below.
+        pass
+    else:
+        if len(fast) == len(pairs) and set(map(type, fast)) <= _TEXT_KEY_TYPES:
+            return fast
     result: dict[str, Any] = {}
     for key, value in pairs:
         if type(key) is not str:
@@ -634,6 +681,9 @@ def _unique_map(pairs: list[tuple[Any, Any]]) -> dict[str, Any]:
             raise _DuplicateKeyError
         result[key] = value
     return result
+
+
+_TEXT_KEY_TYPES = frozenset({str})
 
 
 def _reject_extension(_code: int, _data: bytes) -> Any:

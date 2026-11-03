@@ -13,13 +13,16 @@ msgpack = pytest.importorskip("msgpack")
 from bt_api_base.market_history_protocol import MarketBar
 from bt_api_base.market_protocol import MarketInstrumentKey
 from bt_api_base.market_tick_protocol import (
+    MARKET_TICK_SCHEMA_VERSION,
     MarketClockQuality,
     MarketFreshnessStatus,
+    MarketTickContractError,
     MarketTickPayload,
 )
 from bt_api_base.wire_codec_v1 import (
     MAX_MESSAGE_BYTES,
     SCHEMA_ID,
+    SUPPORTED_MINOR,
     StreamPosition,
     WireCodecError,
     canonical_decimal,
@@ -111,7 +114,52 @@ def test_tick_round_trip_rebuilds_the_same_frozen_container():
     assert type(decoded.payload) is MarketTickPayload
     assert decoded.payload == payload
     assert decoded.stream == STREAM
-    assert decoded.minor == 0
+    assert decoded.minor == SUPPORTED_MINOR == 4
+
+
+@pytest.mark.parametrize("invalid_kind", [[], {}, 1, None, True])
+def test_non_string_kind_is_a_finite_codec_error(invalid_kind):
+    with pytest.raises(WireCodecError, match="WIRE_KIND_INVALID"):
+        encode_message(invalid_kind, _tick(), stream=STREAM)
+    frame = _envelope(kind=invalid_kind)
+    with pytest.raises(WireCodecError, match="WIRE_KIND_INVALID"):
+        decode_message(_raw(frame))
+
+
+def test_unknown_quality_reference_is_read_only_and_versioned():
+    tick = _tick(quality_contract_ref=None, execution_eligible=False)
+    assert MarketTickPayload.from_dict(tick.to_dict()) == tick
+    assert tick.to_dict()["schema_version"] == MARKET_TICK_SCHEMA_VERSION == 2
+    frame = encode_message("tick", tick, stream=STREAM)
+    assert decode_message(frame).payload == tick
+    with pytest.raises(MarketTickContractError):
+        _tick(quality_contract_ref=None, execution_eligible=True)
+    with pytest.raises(WireCodecError, match="WIRE_MINOR_UNSUPPORTED"):
+        decode_message(frame, supported_minor=0)
+
+
+def test_legacy_tick_requires_quality_reference_in_both_formats():
+    tick = _tick()
+    legacy = tick.to_dict()
+    legacy["schema_version"] = 1
+    assert MarketTickPayload.from_dict(legacy) == tick
+    legacy["quality_contract_ref"] = None
+    legacy["execution_eligible"] = False
+    with pytest.raises(MarketTickContractError):
+        MarketTickPayload.from_dict(legacy)
+
+    frame = _envelope(minor=0)
+    assert decode_message(_raw(frame)).payload == tick
+    frame["data"]["quality_contract_ref"] = None
+    frame["data"]["execution_eligible"] = False
+    with pytest.raises(WireCodecError, match="WIRE_PAYLOAD_INVALID"):
+        decode_message(_raw(frame))
+
+
+@pytest.mark.parametrize("invalid", ["", " ", 0, False])
+def test_tick_quality_reference_rejects_invalid_values(invalid):
+    with pytest.raises(MarketTickContractError):
+        _tick(quality_contract_ref=invalid, execution_eligible=False)
 
 
 def test_unknown_values_stay_unknown_across_the_wire():
@@ -239,7 +287,7 @@ def test_size_depth_and_integer_limits():
     [
         ({"schema_id": "other"}, "WIRE_SCHEMA_UNSUPPORTED"),
         ({"major": 2}, "WIRE_MAJOR_UNSUPPORTED"),
-        ({"minor": 1}, "WIRE_MINOR_UNSUPPORTED"),
+        ({"minor": 5}, "WIRE_MINOR_UNSUPPORTED"),
         ({"kind": "order"}, "WIRE_KIND_INVALID"),
         ({"unexpected": 1}, "WIRE_FIELD_SET_INVALID"),
     ],
@@ -294,6 +342,8 @@ def test_schema_digest_is_stable_and_identifies_the_contract():
     digest = schema_digest()
     assert digest == schema_digest()
     assert len(digest) == 64
+    # v1.0's digest must not match the nullable-reference v1.1 contract.
+    assert digest != "8f1b1d4997d95230571f2d8c886c42c49e1ef1ff8fa290dc89f0b5b93447947f"
     assert SCHEMA_ID == "bt_api.wire.v1"
 
 
@@ -342,12 +392,11 @@ def test_codec_backend_reports_the_active_implementation():
 
     backend = codec_backend()
     assert backend in {"c", "python"}
-    try:
-        import msgpack._cmsgpack
-    except ImportError:
-        assert backend == "python"
-    else:
-        assert backend == "c"
+    expected = (
+        "c" if msgpack.unpackb.__module__ == "msgpack._cmsgpack"
+        and msgpack.Packer.__module__ == "msgpack._cmsgpack" else "python"
+    )
+    assert backend == expected
 
 
 # --- fill facts (managed_paper_fill.v2) ------------------------------------
