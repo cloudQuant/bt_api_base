@@ -682,10 +682,17 @@ def _decode_execution_order(data: Mapping[str, Any]) -> AccountExecutionOrderObs
 
 
 def _encode_execution_trade(value: AccountExecutionTradeObservation) -> dict[str, Any]:
+    # The minor-3 typed trade kind has no fee fields (contract semantics
+    # "fees: not-present"); a fee-bearing trade travels only in the account
+    # execution event v2 envelope (iteration 60 R3). Refuse, never drop it.
+    if getattr(value, "fee", None) is not None:
+        raise WireCodecError("WIRE_PAYLOAD_INVALID")
     return _encode_execution_row(value, "trade")
 
 
 def _decode_execution_trade(data: Mapping[str, Any]) -> AccountExecutionTradeObservation:
+    if not isinstance(data, Mapping) or set(data) != AccountExecutionTradeObservation._FIELDS:
+        raise WireCodecError("WIRE_FIELD_SET_INVALID")
     return _decode_execution_row(data, "trade", AccountExecutionTradeObservation)
 
 
@@ -959,12 +966,18 @@ GENERIC_SERVICE_OPERATIONS: Mapping[str, str] = MappingProxyType(
         "account.reconciliation_cut": "reconciliation diagnostic; no typed kind",
         "execution.account_books.query:non-owner-views": "recovery/journal views; no typed kind",
         "orders.submit:binding-less-hosts": (
-            "legacy SDK request map, only on hosts configured without command_bindings"
-            " (CTP execution runtime, group owners); configured clients always send typed"
+            "legacy SDK request map, only on hosts configured without command_bindings:"
+            " CTP execution runtime deployments that declare no command_binding (its runtime"
+            " config has no MarketInstrumentKey or quantity-unit facts to derive one), group"
+            " and account-group owners, approved-target/recovery owners; configured clients"
+            " always send typed"
         ),
         "orders.cancel:binding-less-hosts": (
-            "legacy SDK request map, only on hosts configured without command_bindings"
-            " (CTP execution runtime, group owners); configured clients always send typed"
+            "legacy SDK request map, only on hosts configured without command_bindings:"
+            " CTP execution runtime deployments that declare no command_binding (its runtime"
+            " config has no MarketInstrumentKey or quantity-unit facts to derive one), group"
+            " and account-group owners, approved-target/recovery owners; configured clients"
+            " always send typed"
         ),
         "orders.*": "durable execution records, group legs and recovery references; no typed kind",
         "market.*": "market event/read envelopes; tick/bar stream kinds are not used on this path",

@@ -2,7 +2,9 @@
 
 The enclosed order/trade record describes a provider observation only.  Its
 binding fields remain declarations and require independent source and intent
-verification at the receiver. A trade record does not include fee facts.
+verification at the receiver. A trade record does not include fee facts; a
+trade observation may carry the provider's fee for that fill next to it
+(``fee``/``fee_currency``, iteration 60 R3, account execution event v2).
 """
 
 from __future__ import annotations
@@ -15,7 +17,12 @@ from decimal import Decimal
 from typing import Any, ClassVar
 
 from bt_api_base.account_protocol import AccountKey, account_venue_contains_instrument_venue
-from bt_api_base.execution_query_protocol import ExecutionOrderRecord, ExecutionTradeRecord
+from bt_api_base.execution_query_protocol import (
+    ExecutionOrderRecord,
+    ExecutionTradeRecord,
+    _decimal as _fee_decimal,
+    _text as _fee_text,
+)
 
 
 def _check_scope(account: AccountKey, record: Any) -> None:
@@ -82,23 +89,56 @@ class AccountExecutionOrderObservation:
 
 @dataclass(frozen=True)
 class AccountExecutionTradeObservation:
-    """One account-scoped execution observation; fees remain separately unknown."""
+    """One account-scoped execution observation, optionally with its provider fee.
+
+    ``fee`` (non-negative decimal string) and ``fee_currency`` are the
+    provider's fee for this one fill, present together or not at all. Absent
+    means unknown, never zero. A later report of the same fill with another
+    fee is a fee correction (a new fact, see :func:`execution_observation_fact_id`).
+    """
 
     account_key: AccountKey
     trade: ExecutionTradeRecord
+    fee: str | None = None
+    fee_currency: str | None = None
     _FIELDS: ClassVar[frozenset[str]] = frozenset({"account_key", "trade"})
+    _FEE_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {"account_key", "trade", "fee", "fee_currency"}
+    )
 
     def __post_init__(self) -> None:
         if type(self.account_key) is not AccountKey or type(self.trade) is not ExecutionTradeRecord:
             raise TypeError("expected an AccountKey and ExecutionTradeRecord")
         _check_scope(self.account_key, self.trade)
+        if (self.fee is None) != (self.fee_currency is None):
+            raise ValueError("fee and fee_currency must be present together")
+        if self.fee is not None:
+            _fee_decimal(self.fee, "fee")
+            _fee_text(self.fee_currency, "fee_currency")
 
     def to_dict(self) -> dict[str, Any]:
         _require_declared_state(self.account_key, self.trade, self)
-        return {"account_key": self.account_key.to_dict(), "trade": self.trade.to_dict()}
+        result: dict[str, Any] = {
+            "account_key": self.account_key.to_dict(),
+            "trade": self.trade.to_dict(),
+        }
+        if self.fee is not None:
+            result["fee"] = self.fee
+            result["fee_currency"] = self.fee_currency
+        return result
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> AccountExecutionTradeObservation:
+        if isinstance(value, Mapping) and set(value) == cls._FEE_FIELDS:
+            raw = _fields(value, cls._FEE_FIELDS)
+            if raw["fee"] is None or raw["fee_currency"] is None:
+                raise ValueError("an encoded fee must be present with its currency")
+            return cls(
+                AccountKey.from_dict(raw["account_key"]),
+                ExecutionTradeRecord.from_dict(raw["trade"]),
+                raw["fee"],
+                raw["fee_currency"],
+            )
         raw = _fields(value, cls._FIELDS)
         return cls(
             AccountKey.from_dict(raw["account_key"]), ExecutionTradeRecord.from_dict(raw["trade"])
@@ -118,10 +158,19 @@ class AccountExecutionTradeObservation:
 # conflict that a consumer must not silently merge. Neither value proves the
 # fact, its source, or any intent binding.
 
+#
+# Version 2 (iteration 60 R3): a trade event may carry the provider fee of the
+# fill; the trade fact id includes the fee, so a corrected fee is a new fact
+# (a fee correction) instead of a conflict. Version 1 events (schema
+# ``...execution_event.v1``, kind ``account.execution_trade.v1``) are refused
+# explicitly: they cannot say whether a fee was absent or unknown.
+
 EXECUTION_ORDER_EVENT_KIND = "account.execution_order.v1"
-EXECUTION_TRADE_EVENT_KIND = "account.execution_trade.v1"
-EXECUTION_EVENT_SCHEMA = "bt_api.account.execution_event.v1"
+EXECUTION_TRADE_EVENT_KIND = "account.execution_trade.v2"
+EXECUTION_EVENT_SCHEMA = "bt_api.account.execution_event.v2"
 EXECUTION_EVENT_KINDS = frozenset({EXECUTION_ORDER_EVENT_KIND, EXECUTION_TRADE_EVENT_KIND})
+_RETIRED_EVENT_KINDS = frozenset({"account.execution_trade.v1"})
+_RETIRED_EVENT_SCHEMAS = frozenset({"bt_api.account.execution_event.v1"})
 _EVENT_FIELDS = frozenset({"schema", "fact_id", "fact_digest", "observation"})
 _DECIMAL_FIELDS = frozenset({"quantity", "filled_quantity", "limit_price", "price"})
 
@@ -171,7 +220,10 @@ def execution_observation_fact_id(observation: ExecutionObservation) -> str:
             _normal_decimal(row["quantity"]),
         ]
         return "xo-" + _digest(parts)[:48]
-    return "xt-" + _digest(["trade", account, instrument, row["trade_id"]])[:48]
+    fee = None if observation.fee is None else _normal_decimal(observation.fee)
+    return "xt-" + _digest(
+        ["trade", account, instrument, row["trade_id"], fee, observation.fee_currency]
+    )[:48]
 
 
 def execution_observation_fact_digest(observation: ExecutionObservation) -> str:
@@ -183,6 +235,9 @@ def execution_observation_fact_digest(observation: ExecutionObservation) -> str:
         for key, value in row.items()
         if key != "observed_at_utc"
     }
+    if kind == EXECUTION_TRADE_EVENT_KIND:
+        fee = None if observation.fee is None else _normal_decimal(observation.fee)
+        content = {"row": content, "fee": fee, "fee_currency": observation.fee_currency}
     return _digest([kind, observation.account_key.to_dict(), content])
 
 
@@ -210,9 +265,13 @@ def execution_observation_from_event(
 ) -> ExecutionObservation:
     """Decode and re-derive one journal event; any inconsistency is rejected."""
 
+    if kind in _RETIRED_EVENT_KINDS:
+        raise ValueError("execution event version 1 is no longer accepted")
     if type(kind) is not str or kind not in EXECUTION_EVENT_KINDS:
         raise ValueError("unsupported execution event kind")
     raw = _fields(payload, _EVENT_FIELDS)
+    if raw["schema"] in _RETIRED_EVENT_SCHEMAS:
+        raise ValueError("execution event version 1 is no longer accepted")
     if raw["schema"] != EXECUTION_EVENT_SCHEMA:
         raise ValueError("unsupported execution event schema")
     decoder = (
@@ -227,6 +286,35 @@ def execution_observation_from_event(
     if raw["fact_digest"] != execution_observation_fact_digest(observation):
         raise ValueError("execution event digest does not match its fact")
     return observation
+
+
+# ---------------------------------------------------------------------------
+# Strategy attribution of provider client order ids (iteration 60 R3)
+# ---------------------------------------------------------------------------
+#
+# A Gateway account owner routes execution observations to a strategy's stream
+# by a verified client-order-id prefix. The order-entry owner that generates the
+# provider client order id and the Gateway routing configuration both derive the
+# prefix from the strategy reference with this one function, so neither side
+# types it by hand. The prefix is an attribution label, not authentication.
+
+STRATEGY_CLIENT_ORDER_PREFIX_SCHEMA = "bt_api.strategy-client-order-prefix.v1"
+
+
+def strategy_client_order_prefix(strategy_ref: str) -> str:
+    """The deterministic client-order-id prefix of ``strategy_ref`` (10 characters)."""
+
+    if (
+        type(strategy_ref) is not str
+        or not strategy_ref
+        or strategy_ref != strategy_ref.strip()
+        or len(strategy_ref) > 256
+    ):
+        raise ValueError("strategy_ref must be a non-empty trimmed string")
+    digest = hashlib.sha256(
+        (STRATEGY_CLIENT_ORDER_PREFIX_SCHEMA + "\0" + strategy_ref).encode("utf-8")
+    ).hexdigest()
+    return "s" + digest[:8] + "-"
 
 
 def _plain(value: Any) -> Any:
@@ -251,4 +339,6 @@ __all__ = (
     "execution_observation_fact_digest",
     "execution_observation_fact_id",
     "execution_observation_from_event",
+    "STRATEGY_CLIENT_ORDER_PREFIX_SCHEMA",
+    "strategy_client_order_prefix",
 )
