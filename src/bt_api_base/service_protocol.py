@@ -365,6 +365,8 @@ def _freeze_json_value(value: Any, *, depth: int) -> JsonValue:
                 _fail(WireErrorCode.INVALID_VALUE, WireField.PAYLOAD)
         return value
     if kind is dict or kind is _MAPPING_PROXY_TYPE:
+        child_depth = depth + 1
+        too_deep = child_depth > MAX_JSON_DEPTH
         frozen_items: dict[str, JsonValue] = {}
         for key, item in value.items():
             if type(key) is not str:
@@ -374,11 +376,40 @@ def _freeze_json_value(value: Any, *, depth: int) -> JsonValue:
                     key.encode("utf-8", errors="strict")
                 except UnicodeEncodeError:
                     _fail(WireErrorCode.INVALID_VALUE, WireField.PAYLOAD)
-            frozen_items[key] = _freeze_json_value(item, depth=depth + 1)
+            if too_deep:  # the child's own depth check, after its key checks
+                _fail(WireErrorCode.INVALID_VALUE, WireField.PAYLOAD)
+            frozen_items[key] = _freeze_json_leaf(item, child_depth)
         return MappingProxyType(frozen_items)
     if kind is list or kind is tuple:
-        return tuple(_freeze_json_value(item, depth=depth + 1) for item in value)
+        child_depth = depth + 1
+        if child_depth > MAX_JSON_DEPTH and value:
+            _fail(WireErrorCode.INVALID_VALUE, WireField.PAYLOAD)
+        return tuple([_freeze_json_leaf(item, child_depth) for item in value])
     _fail(WireErrorCode.INVALID_TYPE, WireField.PAYLOAD)
+
+
+def _freeze_json_leaf(item: Any, depth: int) -> JsonValue:
+    """Freeze one container child; scalars skip the recursive call.
+
+    Same rules as ``_freeze_json_value`` (the caller has already applied the
+    depth check that the recursive call would make first); only containers
+    recurse.  Most wire payload children are scalars.
+    """
+    kind = type(item)
+    if kind is str:
+        if not item.isascii():
+            try:
+                item.encode("utf-8", errors="strict")
+            except UnicodeEncodeError:
+                _fail(WireErrorCode.INVALID_VALUE, WireField.PAYLOAD)
+        return item
+    if item is None or kind is bool or kind is int:
+        return item
+    if kind is float:
+        if not math.isfinite(item):
+            _fail(WireErrorCode.NON_FINITE_NUMBER, WireField.PAYLOAD)
+        return item
+    return _freeze_json_value(item, depth=depth)
 
 
 def _thaw_json_value(value: JsonValue) -> Any:

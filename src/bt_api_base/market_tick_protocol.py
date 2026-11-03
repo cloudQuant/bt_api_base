@@ -361,8 +361,9 @@ class MarketTickPayload:
             or raw.get("schema") != MARKET_TICK_SCHEMA
             or type(raw.get("schema_version")) is not int
             or raw.get("schema_version") not in (1, MARKET_TICK_SCHEMA_VERSION)
-            or type(raw.get("freshness_reason_codes")) is not list
-            or type(raw.get("quality_flags")) is not list
+            # A JSON array: a list, or the tuple a frozen wire envelope holds.
+            or type(raw.get("freshness_reason_codes")) not in (list, tuple)
+            or type(raw.get("quality_flags")) not in (list, tuple)
         ):
             raise MarketTickContractError("MARKET_TICK_VALUE_INVALID")
         # Schema v1 required a concrete rule reference; null is a v2 value.

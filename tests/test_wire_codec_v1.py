@@ -450,3 +450,50 @@ def test_fill_fact_rejects_bad_values_on_decode():
 
 def test_schema_digest_covers_the_fill_contract():
     assert len(schema_digest()) == 64
+
+
+def test_tick_payload_rebuilds_from_a_frozen_wire_envelope():
+    """A decoded envelope holds JSON arrays as tuples; ``from_dict`` accepts them."""
+    from bt_api_base.market_protocol import (
+        MARKET_EVENT_OPERATION,
+        MARKET_EVENT_SCHEMA,
+        MARKET_EVENT_SCHEMA_VERSION,
+    )
+    from bt_api_base.service_protocol import (
+        WIRE_PROTOCOL_VERSION,
+        WireEnvelope,
+        WireHeader,
+        WireIdentity,
+        WireMessageKind,
+        WireRole,
+        WireScope,
+        decode_envelope,
+        encode_envelope,
+    )
+
+    tick = _tick(freshness_reason_codes=("STALE_SOURCE",), quality_flags=("LEGACY_SCHEMA",))
+    envelope = WireEnvelope(
+        header=WireHeader(
+            protocol_version=WIRE_PROTOCOL_VERSION,
+            kind=WireMessageKind.EVENT,
+            message_id="m" * 32,
+            correlation_id=None,
+            identity=WireIdentity(WireRole.SERVICE, "gateway-market-hub", "ctp-provider"),
+            scope=WireScope(execution_domain_ref="public:ctp-market"),
+            operation=MARKET_EVENT_OPERATION,
+            schema_id=MARKET_EVENT_SCHEMA,
+            schema_version=MARKET_EVENT_SCHEMA_VERSION,
+            sent_at_utc="2026-11-04T00:00:00.000000Z",
+            stream_id="synthetic-stream",
+            stream_epoch="epoch-1",
+            sequence=1,
+        ),
+        payload={"data": tick.to_dict()},
+    )
+    frozen = decode_envelope(encode_envelope(envelope)).payload["data"]
+    assert type(frozen["freshness_reason_codes"]) is tuple
+    assert MarketTickPayload.from_dict(frozen) == tick
+    # Non-array values are still refused.
+    broken = dict(tick.to_dict(), quality_flags="LEGACY_SCHEMA")
+    with pytest.raises(MarketTickContractError):
+        MarketTickPayload.from_dict(broken)
