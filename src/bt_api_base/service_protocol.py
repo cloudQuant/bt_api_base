@@ -566,6 +566,20 @@ def _msgpack() -> Any:
     return msgpack
 
 
+def encode_wire_value(value: Any) -> bytes:
+    """Canonical v3 MessagePack bytes of one JSON-like payload value.
+
+    This is exactly how the value is written inside an envelope, so callers can
+    measure payload parts (for example a reply ``result``) against byte budgets.
+    """
+
+    frozen = _freeze_json_value(value, depth=0)
+    try:
+        return _msgpack().packb(_canonical(_thaw_json_value(frozen)), use_bin_type=True)
+    except (TypeError, ValueError, OverflowError, RecursionError, UnicodeEncodeError):
+        _fail(WireErrorCode.INVALID_VALUE, WireField.PAYLOAD)
+
+
 def envelope_to_wire_mapping(envelope: WireEnvelope) -> dict[str, Any]:
     """Plain ``header``/``payload`` mapping of an envelope (for nesting in payloads)."""
 

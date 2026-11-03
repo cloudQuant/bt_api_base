@@ -546,3 +546,12 @@ def test_transport_protocols_are_structural_and_service_protocol_import_is_stdli
         capture_output=True,
         text=True,
     )
+
+
+def test_encode_wire_value_matches_the_bytes_inside_an_envelope() -> None:
+    from bt_api_base.service_protocol import encode_wire_value
+
+    result = {"b": "雪", "a": [1, 2.5, None]}
+    encoded = encode_envelope(_envelope(payload={"result": result}))
+    assert encode_wire_value(result) in encoded
+    assert encode_wire_value({}) == b"\x80"
