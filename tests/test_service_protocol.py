@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import subprocess
@@ -9,6 +10,7 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
+import msgpack
 import pytest
 
 from bt_api_base.service_protocol import (
@@ -27,9 +29,12 @@ from bt_api_base.service_protocol import (
     WireValidationError,
     decode_envelope,
     encode_envelope,
+    envelope_from_wire_mapping,
+    envelope_to_wire_mapping,
     validate_event,
     validate_reply,
     validate_request,
+    wire_contract_digest,
 )
 
 
@@ -53,7 +58,7 @@ def _header(
     stream_id: str | None = None,
     stream_epoch: str | None = None,
     sequence: int | None = None,
-    protocol_version: int = 2,
+    protocol_version: int = 3,
     schema_version: int = 1,
 ) -> WireHeader:
     return WireHeader(
@@ -338,56 +343,121 @@ def test_boolean_is_not_accepted_as_an_integer(
     _assert_error(error.value, WireErrorCode.INVALID_TYPE, expected_field)
 
 
-def test_decode_rejects_unsupported_versions_unknown_fields_and_bad_types() -> None:
-    encoded = encode_envelope(_envelope())
-    wire_value = json.loads(encoded)
+def _wire(envelope):
+    return msgpack.unpackb(encode_envelope(envelope), raw=False)
 
-    unsupported = json.loads(json.dumps(wire_value))
-    unsupported["header"]["protocol_version"] = 1
+
+def _pack(value):
+    return msgpack.packb(value, use_bin_type=True)
+
+
+def test_decode_rejects_unsupported_versions_unknown_fields_and_bad_types() -> None:
+    wire_value = _wire(_envelope())
+
+    unsupported = copy.deepcopy(wire_value)
+    unsupported["header"]["protocol_version"] = 2
     with pytest.raises(WireValidationError) as unsupported_error:
-        decode_envelope(json.dumps(unsupported).encode())
+        decode_envelope(_pack(unsupported))
     _assert_error(
         unsupported_error.value,
         WireErrorCode.UNSUPPORTED_VERSION,
         WireField.PROTOCOL_VERSION,
     )
 
-    boolean_version = json.loads(json.dumps(wire_value))
+    boolean_version = copy.deepcopy(wire_value)
     boolean_version["header"]["protocol_version"] = True
     with pytest.raises(WireValidationError) as type_error:
-        decode_envelope(json.dumps(boolean_version).encode())
+        decode_envelope(_pack(boolean_version))
     _assert_error(type_error.value, WireErrorCode.INVALID_TYPE, WireField.PROTOCOL_VERSION)
 
-    unknown = json.loads(json.dumps(wire_value))
+    unknown = copy.deepcopy(wire_value)
     unknown["header"]["legacy_fallback"] = True
     with pytest.raises(WireValidationError) as unknown_error:
-        decode_envelope(json.dumps(unknown).encode())
+        decode_envelope(_pack(unknown))
     _assert_error(unknown_error.value, WireErrorCode.UNKNOWN_FIELD, WireField.HEADER)
 
 
-def test_json_rejects_duplicate_keys_and_non_finite_numbers_without_echoing_values() -> None:
-    with pytest.raises(WireValidationError) as duplicate_error:
-        decode_envelope(b'{"header":{},"header":{},"payload":{}}')
-    _assert_error(duplicate_error.value, WireErrorCode.DUPLICATE_KEY, WireField.MESSAGE)
+def test_v3_refuses_v2_json_and_a_different_contract() -> None:
+    wire_value = _wire(_envelope())
+    legacy_json = json.dumps({"header": wire_value["header"], "payload": {}}).encode()
+    with pytest.raises(WireValidationError) as json_error:
+        decode_envelope(legacy_json)
+    assert json_error.value.code in {WireErrorCode.INVALID_JSON, WireErrorCode.INVALID_TYPE}
 
+    other = copy.deepcopy(wire_value)
+    other["contract"] = "0" * 64  # a peer built against another field table
+    with pytest.raises(WireValidationError) as contract_error:
+        decode_envelope(_pack(other))
+    _assert_error(
+        contract_error.value, WireErrorCode.UNSUPPORTED_VERSION, WireField.PROTOCOL_VERSION
+    )
+    assert wire_value["contract"] == wire_contract_digest()
+
+
+def test_encoding_is_canonical() -> None:
+    first = encode_envelope(_envelope(payload={"b": 1, "a": {"y": 2, "x": 3}}))
+    second = encode_envelope(_envelope(payload={"a": {"x": 3, "y": 2}, "b": 1}))
+    assert first == second
+
+
+def test_strict_decoding_rejects_duplicates_trailing_bytes_ext_and_binary() -> None:
     valid = encode_envelope(_envelope(payload={"amount": 1}))
-    duplicate_payload = valid.replace(b'"amount":1', b'"amount":1,"amount":2')
-    with pytest.raises(WireValidationError) as nested_duplicate_error:
-        decode_envelope(duplicate_payload)
-    _assert_error(
-        nested_duplicate_error.value,
-        WireErrorCode.DUPLICATE_KEY,
-        WireField.MESSAGE,
-    )
+    wire_value = msgpack.unpackb(valid, raw=False)
 
-    non_finite = valid.replace(b'"amount":1', b'"amount":1e400')
-    with pytest.raises(WireValidationError) as non_finite_error:
-        decode_envelope(non_finite)
-    _assert_error(
-        non_finite_error.value,
-        WireErrorCode.NON_FINITE_NUMBER,
-        WireField.PAYLOAD,
+    # Duplicate keys at the top level and nested in the payload.
+    header_bytes = _pack(wire_value["header"])
+    duplicate_top = (
+        b"\x84"
+        + _pack("contract")
+        + _pack(wire_value["contract"])
+        + _pack("header")
+        + header_bytes
+        + _pack("header")
+        + header_bytes
+        + _pack("payload")
+        + _pack({})
     )
+    with pytest.raises(WireValidationError) as duplicate_error:
+        decode_envelope(duplicate_top)
+    _assert_error(duplicate_error.value, WireErrorCode.DUPLICATE_KEY, WireField.MESSAGE)
+    duplicate_payload = (
+        b"\x83"
+        + _pack("contract")
+        + _pack(wire_value["contract"])
+        + _pack("header")
+        + header_bytes
+        + _pack("payload")
+        + b"\x82"
+        + _pack("amount")
+        + _pack(1)
+        + _pack("amount")
+        + _pack(2)
+    )
+    with pytest.raises(WireValidationError) as nested_error:
+        decode_envelope(duplicate_payload)
+    _assert_error(nested_error.value, WireErrorCode.DUPLICATE_KEY, WireField.MESSAGE)
+
+    with pytest.raises(WireValidationError) as trailing_error:
+        decode_envelope(valid + b"\x00")
+    _assert_error(trailing_error.value, WireErrorCode.INVALID_JSON, WireField.MESSAGE)
+
+    ext = copy.deepcopy(wire_value)
+    ext["payload"] = {"amount": msgpack.ExtType(1, b"x")}
+    with pytest.raises(WireValidationError) as ext_error:
+        decode_envelope(_pack(ext))
+    _assert_error(ext_error.value, WireErrorCode.INVALID_JSON, WireField.MESSAGE)
+
+    binary = copy.deepcopy(wire_value)
+    binary["payload"] = {"amount": b"raw-bytes"}
+    with pytest.raises(WireValidationError) as binary_error:
+        decode_envelope(_pack(binary))
+    _assert_error(binary_error.value, WireErrorCode.INVALID_TYPE, WireField.PAYLOAD)
+
+    non_finite = copy.deepcopy(wire_value)
+    non_finite["payload"] = {"amount": float("inf")}
+    with pytest.raises(WireValidationError) as non_finite_error:
+        decode_envelope(_pack(non_finite))
+    _assert_error(non_finite_error.value, WireErrorCode.NON_FINITE_NUMBER, WireField.PAYLOAD)
 
     class SensitiveObject:
         def __repr__(self) -> str:
@@ -397,6 +467,11 @@ def test_json_rejects_duplicate_keys_and_non_finite_numbers_without_echoing_valu
         _envelope(payload={"value": SensitiveObject()})  # type: ignore[arg-type]
     _assert_error(object_error.value, WireErrorCode.INVALID_TYPE, WireField.PAYLOAD)
     assert "secret-token-should-not-appear" not in str(object_error.value)
+
+
+def test_nested_wire_mapping_round_trip() -> None:
+    envelope = _envelope(payload={"amount": 1})
+    assert envelope_from_wire_mapping(envelope_to_wire_mapping(envelope)) == envelope
 
 
 def test_message_size_and_input_types_are_bounded() -> None:

@@ -1,12 +1,28 @@
-"""Neutral, strict v2 wire contracts for optional service transports.
+"""Neutral, strict v3 wire contracts for optional service transports.
 
 The header carries claims supplied by a peer. It is not an authorization
 credential; a server must resolve identity and scope against trusted state.
 Payload schemas and their domain meaning belong to the SDK and service adapters.
+
+Protocol v3 (iteration 60, user decision: every cross-process message is
+MessagePack, commands included). An envelope on the wire is one MessagePack
+map with exactly ``contract``, ``header`` and ``payload``:
+
+* ``contract`` is :func:`wire_contract_digest`, the digest of this envelope
+  contract together with the typed market/fill registry of
+  ``wire_codec_v1``. A peer built against a different contract is refused on
+  every message (``unsupported_version``), so mixed deployments cannot
+  silently reinterpret fields; v2 JSON envelopes are refused the same way.
+* Strict decoding: one complete object (trailing bytes rejected), text map
+  keys only, duplicate keys rejected, binary and extension types rejected,
+  only finite floats, bounded size and depth. Maps are written with sorted
+  keys so equal envelopes have equal bytes.
+* ``msgpack`` is imported lazily: the direct path never loads it.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import re
@@ -17,7 +33,7 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, NoReturn, Protocol, Union, runtime_checkable
 
-WIRE_PROTOCOL_VERSION = 2
+WIRE_PROTOCOL_VERSION = 3
 MAX_WIRE_MESSAGE_BYTES = 1024 * 1024
 MAX_JSON_DEPTH = 64
 MAX_REFERENCE_BYTES = 256
@@ -515,24 +531,71 @@ def _validate_max_bytes(max_bytes: Any) -> int:
     return max_bytes
 
 
-def encode_envelope(envelope: WireEnvelope, *, max_bytes: int = MAX_WIRE_MESSAGE_BYTES) -> bytes:
-    """Serialize one envelope as bounded UTF-8 JSON; no object fallback exists."""
+def _canonical(value: Any) -> Any:
+    if type(value) is dict:
+        return {key: _canonical(value[key]) for key in sorted(value)}
+    if type(value) is list:
+        return [_canonical(item) for item in value]
+    return value
 
-    max_bytes = _validate_max_bytes(max_bytes)
+
+def _contract_digest() -> str:
+    from bt_api_base.wire_codec_v1 import schema_digest
+
+    contract = {
+        "protocol_version": WIRE_PROTOCOL_VERSION,
+        "encoding": "msgpack",
+        "envelope_keys": ["contract", "header", "payload"],
+        "header_keys": sorted(_HEADER_KEYS),
+        "identity_keys": sorted(_IDENTITY_KEYS),
+        "scope_keys": sorted(_SCOPE_KEYS),
+        "roles": sorted(role.value for role in WireRole),
+        "kinds": sorted(kind.value for kind in WireMessageKind),
+        "max_depth": MAX_JSON_DEPTH,
+        "typed_registry": schema_digest(),
+    }
+    blob = json.dumps(contract, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(blob).hexdigest()
+
+
+def _msgpack() -> Any:
+    try:
+        import msgpack
+    except ImportError:  # pragma: no cover - only without the service extra
+        _fail(WireErrorCode.UNSUPPORTED_VERSION, WireField.MESSAGE)
+    return msgpack
+
+
+def envelope_to_wire_mapping(envelope: WireEnvelope) -> dict[str, Any]:
+    """Plain ``header``/``payload`` mapping of an envelope (for nesting in payloads)."""
+
     if type(envelope) is not WireEnvelope:
         _fail(WireErrorCode.INVALID_TYPE, WireField.MESSAGE)
-    wire_value = {
+    return {
         "header": _header_to_wire(envelope.header),
         "payload": _thaw_json_value(envelope.payload),
     }
+
+
+def envelope_from_wire_mapping(value: Any) -> WireEnvelope:
+    """Validate a nested ``header``/``payload`` mapping back into an envelope."""
+
+    wire_object = _expect_object(
+        _thaw_json_value(value) if type(value) is _MAPPING_PROXY_TYPE else value, WireField.MESSAGE
+    )
+    _check_object_keys(wire_object, frozenset({"header", "payload"}), WireField.MESSAGE)
+    header = _parse_header(wire_object["header"])
+    return WireEnvelope(header=header, payload=wire_object["payload"])
+
+
+def encode_envelope(envelope: WireEnvelope, *, max_bytes: int = MAX_WIRE_MESSAGE_BYTES) -> bytes:
+    """Serialize one envelope as bounded, canonical v3 MessagePack."""
+
+    max_bytes = _validate_max_bytes(max_bytes)
+    wire_value = envelope_to_wire_mapping(envelope)
+    wire_value["contract"] = wire_contract_digest()
     try:
-        encoded = json.dumps(
-            wire_value,
-            ensure_ascii=False,
-            allow_nan=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        ).encode("utf-8", errors="strict")
+        encoded = _msgpack().packb(_canonical(wire_value), use_bin_type=True)
     except (TypeError, ValueError, OverflowError, RecursionError, UnicodeEncodeError):
         _fail(WireErrorCode.INVALID_VALUE, WireField.MESSAGE)
     if len(encoded) > max_bytes:
@@ -540,60 +603,61 @@ def encode_envelope(envelope: WireEnvelope, *, max_bytes: int = MAX_WIRE_MESSAGE
     return encoded
 
 
-class _DuplicateJSONKeyError(ValueError):
+class _DuplicateKeyError(ValueError):
     pass
 
 
-class _NonFiniteJSONNumberError(ValueError):
+class _InvalidWireValueError(ValueError):
     pass
 
 
-def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+def _unique_map(pairs: list[tuple[Any, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
+        if type(key) is not str:
+            raise _InvalidWireValueError
         if key in result:
-            raise _DuplicateJSONKeyError
+            raise _DuplicateKeyError
         result[key] = value
     return result
 
 
-def _parse_json_float(value: str) -> float:
-    parsed = float(value)
-    if not math.isfinite(parsed):
-        raise _NonFiniteJSONNumberError
-    return parsed
-
-
-def _reject_json_constant(_value: str) -> NoReturn:
-    raise _NonFiniteJSONNumberError
+def _reject_extension(_code: int, _data: bytes) -> Any:
+    raise _InvalidWireValueError
 
 
 def decode_envelope(data: bytes, *, max_bytes: int = MAX_WIRE_MESSAGE_BYTES) -> WireEnvelope:
-    """Decode one strict v2 JSON envelope, rejecting duplicate keys and fallback formats."""
+    """Decode one strict v3 MessagePack envelope; v2 JSON and other contracts are refused."""
 
     max_bytes = _validate_max_bytes(max_bytes)
     if type(data) is not bytes:
         _fail(WireErrorCode.INVALID_TYPE, WireField.MESSAGE)
     if len(data) > max_bytes:
         _fail(WireErrorCode.MESSAGE_TOO_LARGE, WireField.MESSAGE)
+    msgpack = _msgpack()
     try:
-        text = data.decode("utf-8", errors="strict")
-        wire_value = json.loads(
-            text,
-            object_pairs_hook=_unique_object,
-            parse_float=_parse_json_float,
-            parse_constant=_reject_json_constant,
+        wire_value = msgpack.unpackb(
+            data,
+            raw=False,
+            use_list=True,
+            strict_map_key=True,
+            object_pairs_hook=_unique_map,
+            ext_hook=_reject_extension,
         )
-    except _DuplicateJSONKeyError:
+    except _DuplicateKeyError:
         _fail(WireErrorCode.DUPLICATE_KEY, WireField.MESSAGE)
-    except _NonFiniteJSONNumberError:
-        _fail(WireErrorCode.NON_FINITE_NUMBER, WireField.PAYLOAD)
-    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError, OverflowError):
+    except (_InvalidWireValueError, msgpack.ExtraData, msgpack.FormatError, msgpack.StackError):
+        _fail(WireErrorCode.INVALID_JSON, WireField.MESSAGE)
+    except (ValueError, TypeError, UnicodeDecodeError, RecursionError, OverflowError):
         _fail(WireErrorCode.INVALID_JSON, WireField.MESSAGE)
 
     wire_object = _expect_object(wire_value, WireField.MESSAGE)
-    _check_object_keys(wire_object, frozenset({"header", "payload"}), WireField.MESSAGE)
+    _check_object_keys(wire_object, frozenset({"contract", "header", "payload"}), WireField.MESSAGE)
+    if wire_object["contract"] != wire_contract_digest():
+        _fail(WireErrorCode.UNSUPPORTED_VERSION, WireField.PROTOCOL_VERSION)
     header = _parse_header(wire_object["header"])
+    # Payload validation (finite floats, text keys, depth, no binary) happens
+    # in WireEnvelope's freeze step.
     return WireEnvelope(header=header, payload=wire_object["payload"])
 
 
@@ -708,3 +772,21 @@ class EventSubscriber(Protocol):
 
     def close(self) -> None:
         """Release resources owned by this subscriber."""
+
+
+
+_CONTRACT_DIGEST_CACHE: list[str] = []
+
+
+def wire_contract_digest() -> str:
+    """Digest of the v3 envelope contract (computed once, lazily: no import cycle)."""
+
+    if not _CONTRACT_DIGEST_CACHE:
+        _CONTRACT_DIGEST_CACHE.append(_contract_digest())
+    return _CONTRACT_DIGEST_CACHE[0]
+
+
+def __getattr__(name: str) -> Any:
+    if name == "WIRE_CONTRACT_DIGEST":
+        return wire_contract_digest()
+    raise AttributeError(name)

@@ -21,6 +21,7 @@ from bt_api_base.market_protocol import (
     MarketSubscriptionKey,
 )
 from bt_api_base.service_protocol import (
+    WIRE_PROTOCOL_VERSION,
     WireEnvelope,
     WireHeader,
     WireIdentity,
@@ -282,7 +283,7 @@ def test_market_event_uses_the_existing_wire_envelope() -> None:
     key = _key()
     envelope = WireEnvelope(
         header=WireHeader(
-            protocol_version=2,
+            protocol_version=WIRE_PROTOCOL_VERSION,
             kind=WireMessageKind.EVENT,
             message_id="event-1",
             correlation_id=None,
