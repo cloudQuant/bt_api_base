@@ -967,17 +967,15 @@ GENERIC_SERVICE_OPERATIONS: Mapping[str, str] = MappingProxyType(
         "execution.account_books.query:non-owner-views": "recovery/journal views; no typed kind",
         "orders.submit:binding-less-hosts": (
             "legacy SDK request map, only on hosts configured without command_bindings:"
-            " CTP execution runtime deployments that declare no command_binding (its runtime"
-            " config has no MarketInstrumentKey or quantity-unit facts to derive one), group"
-            " and account-group owners, approved-target/recovery owners; configured clients"
-            " always send typed"
+            " group and account-group owners, approved-target/recovery owners (the CTP"
+            " execution runtime host requires its declared command_binding since iteration"
+            " 60); configured clients always send typed"
         ),
         "orders.cancel:binding-less-hosts": (
             "legacy SDK request map, only on hosts configured without command_bindings:"
-            " CTP execution runtime deployments that declare no command_binding (its runtime"
-            " config has no MarketInstrumentKey or quantity-unit facts to derive one), group"
-            " and account-group owners, approved-target/recovery owners; configured clients"
-            " always send typed"
+            " group and account-group owners, approved-target/recovery owners (the CTP"
+            " execution runtime host requires its declared command_binding since iteration"
+            " 60); configured clients always send typed"
         ),
         "orders.*": "durable execution records, group legs and recovery references; no typed kind",
         "market.*": "market event/read envelopes; tick/bar stream kinds are not used on this path",
