@@ -298,11 +298,23 @@ def execution_observation_from_event(
 # prefix from the strategy reference with this one function, so neither side
 # types it by hand. The prefix is an attribution label, not authentication.
 
-STRATEGY_CLIENT_ORDER_PREFIX_SCHEMA = "bt_api.strategy-client-order-prefix.v1"
+#
+# Version 2: the prefix and the full id are lowercase alphanumeric only and
+# the full id is at most 32 characters, the strictest common venue grammar
+# (OKX ``clOrdId``: up to 32 alphanumerics; Binance ``newClientOrderId``: up to
+# 36 of ``[.A-Z:/a-z0-9_-]``). Version 1 (``s`` + 8 hex + ``-``) was rejected by
+# OKX and its 45-character Risk ids by Binance.
+
+STRATEGY_CLIENT_ORDER_PREFIX_SCHEMA = "bt_api.strategy-client-order-prefix.v2"
+STRATEGY_CLIENT_ORDER_PREFIX_LENGTH = 10
+STRATEGY_CLIENT_ORDER_ID_LENGTH = 32
 
 
 def strategy_client_order_prefix(strategy_ref: str) -> str:
-    """The deterministic client-order-id prefix of ``strategy_ref`` (10 characters)."""
+    """The deterministic client-order-id prefix of ``strategy_ref``.
+
+    ``s`` plus 9 lowercase hex digits (10 alphanumeric characters).
+    """
 
     if (
         type(strategy_ref) is not str
@@ -314,7 +326,24 @@ def strategy_client_order_prefix(strategy_ref: str) -> str:
     digest = hashlib.sha256(
         (STRATEGY_CLIENT_ORDER_PREFIX_SCHEMA + "\0" + strategy_ref).encode("utf-8")
     ).hexdigest()
-    return "s" + digest[:8] + "-"
+    return "s" + digest[: STRATEGY_CLIENT_ORDER_PREFIX_LENGTH - 1]
+
+
+def strategy_client_order_id(strategy_ref: str, digest_hex: str) -> str:
+    """A venue-safe provider client order id attributed to ``strategy_ref``.
+
+    The strategy prefix followed by the first 22 digits of the caller's
+    lowercase hex digest of the order identity: 32 lowercase alphanumerics.
+    """
+
+    width = STRATEGY_CLIENT_ORDER_ID_LENGTH - STRATEGY_CLIENT_ORDER_PREFIX_LENGTH
+    if (
+        type(digest_hex) is not str
+        or len(digest_hex) < width
+        or any(char not in "0123456789abcdef" for char in digest_hex)
+    ):
+        raise ValueError("digest_hex must be lowercase hex of at least 22 digits")
+    return strategy_client_order_prefix(strategy_ref) + digest_hex[:width]
 
 
 def _plain(value: Any) -> Any:
@@ -339,6 +368,9 @@ __all__ = (
     "execution_observation_fact_digest",
     "execution_observation_fact_id",
     "execution_observation_from_event",
+    "STRATEGY_CLIENT_ORDER_ID_LENGTH",
+    "STRATEGY_CLIENT_ORDER_PREFIX_LENGTH",
     "STRATEGY_CLIENT_ORDER_PREFIX_SCHEMA",
+    "strategy_client_order_id",
     "strategy_client_order_prefix",
 )

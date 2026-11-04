@@ -22,6 +22,7 @@ from bt_api_base.execution_row_observation_protocol import (
     execution_observation_fact_digest,
     execution_observation_fact_id,
     execution_observation_from_event,
+    strategy_client_order_id,
     strategy_client_order_prefix,
 )
 from bt_api_base.wire_codec_v1 import WireCodecError, decode_typed_part, encode_typed_part
@@ -98,7 +99,23 @@ def test_strategy_client_order_prefix_is_deterministic_and_distinct():
     first = strategy_client_order_prefix("strategy-a")
     assert first == strategy_client_order_prefix("strategy-a")
     assert first != strategy_client_order_prefix("strategy-b")
-    assert len(first) == 10 and first.startswith("s") and first.endswith("-")
+    assert len(first) == 10 and first.startswith("s") and first.isalnum()
     for bad in ("", " a", None, "x" * 257):
         with pytest.raises(ValueError):
             strategy_client_order_prefix(bad)
+
+
+def test_strategy_client_order_id_fits_the_strictest_venue_grammar():
+    """OKX clOrdId (<= 32 alphanumerics) and Binance (<= 36 of [.A-Z:/a-z0-9_-])."""
+
+    import re
+
+    digest = "0123456789abcdef" * 4
+    client_id = strategy_client_order_id("strategy-a", digest)
+    assert client_id.startswith(strategy_client_order_prefix("strategy-a"))
+    assert len(client_id) == 32 and client_id.isalnum() and client_id == client_id.lower()
+    assert re.fullmatch(r"[A-Za-z0-9]{1,32}", client_id)  # OKX
+    assert re.fullmatch(r"[.A-Z:/a-z0-9_-]{1,36}", client_id)  # Binance
+    for bad in ("ABC" * 10, "0" * 21, "g" * 30, None):
+        with pytest.raises(ValueError):
+            strategy_client_order_id("strategy-a", bad)
