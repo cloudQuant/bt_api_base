@@ -110,7 +110,9 @@ class AccountBalanceSnapshot:
                     coverage_blockers.append("account_balance_observed_after_completion")
 
         session_blockers.extend(self._session_blockers())
-        valuation, valuation_rows_blockers = self._project_valuation(balances)
+        valuation, valuation_rows_blockers = self._project_valuation(
+            balances, tuple(coverage_blockers)
+        )
         valuation_blockers.extend(valuation_rows_blockers)
         if self.failure_code is not None:
             if self.failure_code in {
@@ -291,7 +293,10 @@ class AccountBalanceSnapshot:
     def _project_valuation(
         self,
         balances: tuple[AccountBalance, ...],
+        coverage_blockers: tuple[str, ...] = (),
     ) -> tuple[AccountValuation | None, tuple[str, ...]]:
+        # ``coverage_blockers`` is passed in: this runs inside __post_init__
+        # before the frozen field is assigned.
         snapshot = self.valuation_snapshot
         if snapshot is None:
             return None, ("account_valuation_snapshot_unavailable",)
@@ -304,7 +309,7 @@ class AccountBalanceSnapshot:
             self.query_snapshot is None
             or not self.query_snapshot.is_complete
             or self.query_snapshot.scope_complete is not True
-            or self.coverage_blockers
+            or coverage_blockers
             or snapshot.source_ref != self.query_snapshot.source_ref
             or snapshot.generation != self.query_snapshot.generation
         ):
