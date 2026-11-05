@@ -271,6 +271,12 @@ class AccountPosition:
     average_price: str | None
     price_currency: str | None
     observed_at_utc: str
+    # Iteration 62 (D62-22, R-1): optional venue split of ``quantity`` into
+    # positions opened in the current trading day and older ones.  Providers
+    # that do not report the split leave both ``None``; serialized forms omit
+    # absent values so existing records and digests are unchanged.
+    today_quantity: str | None = None
+    yesterday_quantity: str | None = None
 
     _FIELDS: ClassVar[frozenset[str]] = frozenset(
         {
@@ -283,6 +289,9 @@ class AccountPosition:
             "price_currency",
             "observed_at_utc",
         }
+    )
+    _OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {"today_quantity", "yesterday_quantity"}
     )
 
     def __post_init__(self) -> None:
@@ -302,9 +311,17 @@ class AccountPosition:
         _check_decimal(self.average_price, "average_price", optional=True)
         _check_optional_text(self.price_currency, "price_currency")
         _check_utc_timestamp(self.observed_at_utc, "observed_at_utc")
+        split = []
+        for name in ("today_quantity", "yesterday_quantity"):
+            value = _check_decimal(getattr(self, name), name, optional=True)
+            if value is not None and Decimal(value) < 0:
+                raise ValueError(f"{name} must be nonnegative")
+            split.append(value)
+        if None not in split and Decimal(split[0]) + Decimal(split[1]) != Decimal(quantity):
+            raise ValueError("today_quantity + yesterday_quantity must equal quantity")
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "resource": self.resource.to_dict(),
             "instrument": self.instrument.to_dict(),
             "side": self.side,
@@ -314,9 +331,21 @@ class AccountPosition:
             "price_currency": self.price_currency,
             "observed_at_utc": self.observed_at_utc,
         }
+        if self.today_quantity is not None:
+            result["today_quantity"] = self.today_quantity
+        if self.yesterday_quantity is not None:
+            result["yesterday_quantity"] = self.yesterday_quantity
+        return result
 
     @classmethod
     def from_dict(cls, mapping: Mapping[str, Any]) -> AccountPosition:
+        optional: dict[str, Any] = {}
+        if isinstance(mapping, Mapping) and any(key in mapping for key in cls._OPTIONAL_FIELDS):
+            remaining = dict(mapping)
+            optional = {
+                key: remaining.pop(key) for key in cls._OPTIONAL_FIELDS if key in remaining
+            }
+            mapping = remaining
         raw = _require_exact_mapping(mapping, cls._FIELDS, "account_position")
         return cls(
             resource=AccountResourceKey.from_dict(raw["resource"]),
@@ -327,6 +356,8 @@ class AccountPosition:
             average_price=raw["average_price"],
             price_currency=raw["price_currency"],
             observed_at_utc=raw["observed_at_utc"],
+            today_quantity=optional.get("today_quantity"),
+            yesterday_quantity=optional.get("yesterday_quantity"),
         )
 
 
