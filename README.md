@@ -605,3 +605,8 @@ available through the separately authorized command-status contract.
 ### Iteration 63 R16: public cancellation observations
 
 `gateway_cancel_protocol.GatewayCancelRecord` is a strict, bounded version-1 observation of a single cancellation attempt. It binds the journal, account, strategy, principal and original command, exposes only finite public error categories, and carries no prepared native fields. `SENT` describes submission of the cancellation request, not cancellation of the venue order. Authentication and venue facts remain separate responsibilities.
+
+
+### Iteration 63 R17: versioned cancel sources and error observations
+
+PreparedCancelRequest optionally seals provider source labels in schema v2; None retains the exact v1 mapping and digest. Source labels do not authorize a request. CANCEL_ERROR facts may use explicit v2 with a cancel_request_key included in their digest, separating repeated cancellation attempts for one order. Existing v1 fact digests remain unchanged. New execution pages encode v2 with optional operation/attempt/prepared-digest attribution; old v1 pages are strictly decoded, and public observations retain their redacted v1 shape.

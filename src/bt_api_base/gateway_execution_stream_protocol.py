@@ -232,6 +232,8 @@ class GatewayExecutionObservation:
 
 
 _ECONOMIC_FIELDS = tuple(
+    # Only observation fields are projected; v2 fact cancel_request_key is
+    # intentionally absent and never becomes a public economic field.
     f.name
     for f in fields(GatewayExecutionObservation)
     if f.name
@@ -286,6 +288,35 @@ def project_gateway_execution_observation(fact: GatewayReturnFact) -> GatewayExe
 
 
 @dataclass(frozen=True, slots=True)
+class GatewayCancelErrorAttribution:
+    """Public correlation to one persisted attempt; not source authority."""
+
+    operation_id: str
+    attempt_id: str
+    prepared_digest: str
+
+    def __post_init__(self) -> None:
+        if (
+            not _text(self.operation_id)
+            or not _text(self.attempt_id)
+            or not _digest(self.prepared_digest)
+        ):
+            _fail()
+
+    def to_mapping(self) -> dict[str, str]:
+        self.__post_init__()
+        return {
+            "operation_id": self.operation_id,
+            "attempt_id": self.attempt_id,
+            "prepared_digest": self.prepared_digest,
+        }
+
+    @classmethod
+    def from_mapping(cls, raw: object) -> GatewayCancelErrorAttribution:
+        return cls(**_mapping(raw, {"operation_id", "attempt_id", "prepared_digest"}))
+
+
+@dataclass(frozen=True, slots=True)
 class GatewayExecutionStreamEvent:
     sequence: int
     request_key: str
@@ -294,6 +325,7 @@ class GatewayExecutionStreamEvent:
     command_principal: str
     fact_digest: str
     observation: GatewayExecutionObservation
+    cancel_attribution: GatewayCancelErrorAttribution | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -304,19 +336,47 @@ class GatewayExecutionStreamEvent:
             or not _digest(self.command_digest)
             or not _digest(self.fact_digest)
             or type(self.observation) is not GatewayExecutionObservation
+            or (
+                self.cancel_attribution is not None
+                and (
+                    type(self.cancel_attribution) is not GatewayCancelErrorAttribution
+                    or self.observation.kind is not DirectExecutionEventKind.CANCEL_ERROR
+                )
+            )
         ):
             _fail()
+        if self.cancel_attribution is not None:
+            self.cancel_attribution.__post_init__()
 
-    def to_mapping(self) -> dict[str, Any]:
-        return {
+    def to_mapping(self, *, schema_version: int = 2) -> dict[str, Any]:
+        self.__post_init__()
+        if type(schema_version) is not int or schema_version not in (1, 2):
+            _fail()
+        if schema_version == 1 and self.cancel_attribution is not None:
+            _fail()
+        result = {
             name: (self.observation.to_mapping() if name == "observation" else getattr(self, name))
-            for name in (f.name for f in fields(self))
+            for name in (f.name for f in fields(self) if f.name != "cancel_attribution")
         }
+        if schema_version == 2:
+            result["cancel_attribution"] = (
+                None if self.cancel_attribution is None else self.cancel_attribution.to_mapping()
+            )
+        return result
 
     @classmethod
-    def from_mapping(cls, raw: object) -> GatewayExecutionStreamEvent:
-        data = _mapping(raw, {f.name for f in fields(cls)})
+    def from_mapping(cls, raw: object, *, schema_version: int = 2) -> GatewayExecutionStreamEvent:
+        if type(schema_version) is not int or schema_version not in (1, 2):
+            _fail()
+        names = {f.name for f in fields(cls)}
+        if schema_version == 1:
+            names.remove("cancel_attribution")
+        data = _mapping(raw, names)
         data["observation"] = GatewayExecutionObservation.from_mapping(data["observation"])
+        if schema_version == 2 and data["cancel_attribution"] is not None:
+            data["cancel_attribution"] = GatewayCancelErrorAttribution.from_mapping(
+                data["cancel_attribution"]
+            )
         return cls(**data)
 
 
@@ -343,13 +403,14 @@ def _parse_outer(
     raw: object,
     expected_binding: GatewayCommandBinding,
     expected_consumer_ref: str | None,
+    allowed_versions: tuple[int, ...] = (1,),
 ) -> dict[str, Any]:
     _validate_binding(expected_binding)
     if expected_consumer_ref is not None and not _consumer(expected_consumer_ref):
         _fail()
     data = _mapping(raw, {f.name for f in fields(cls)} | {"schema_version"})
     version = data.pop("schema_version")
-    if type(version) is not int or version != 1:
+    if type(version) is not int or version not in allowed_versions:
         _fail()
     binding_data = _mapping(
         data["binding"], {"journal_id", "account_scope", "strategy_scope", "principal"}
@@ -443,14 +504,14 @@ class GatewayExecutionStreamPage:
 
     def to_mapping(self) -> dict[str, Any]:
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "binding": _binding_mapping(self.binding),
             "consumer_ref": self.consumer_ref,
             "epoch": self.epoch,
             "offered_sequence": self.offered_sequence,
             "acknowledged_sequence": self.acknowledged_sequence,
             "has_more": self.has_more,
-            "events": [event.to_mapping() for event in self.events],
+            "events": [event.to_mapping(schema_version=2) for event in self.events],
         }
 
     @classmethod
@@ -461,10 +522,11 @@ class GatewayExecutionStreamPage:
         expected_binding: GatewayCommandBinding,
         expected_consumer_ref: str | None = None,
     ) -> GatewayExecutionStreamPage:
-        data = _parse_outer(cls, raw, expected_binding, expected_consumer_ref)
+        data = _parse_outer(cls, raw, expected_binding, expected_consumer_ref, (1, 2))
         if type(data["events"]) is not list or len(data["events"]) > 256:
             _fail()
         data["events"] = tuple(
-            GatewayExecutionStreamEvent.from_mapping(event) for event in data["events"]
+            GatewayExecutionStreamEvent.from_mapping(event, schema_version=raw["schema_version"])
+            for event in data["events"]
         )
         return cls(**data)
