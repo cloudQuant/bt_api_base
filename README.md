@@ -562,3 +562,15 @@ MIT 许可证 - 详见 [LICENSE](LICENSE)。
 
 - 通过 [GitHub Issues](https://github.com/cloudQuant/bt_api_base/issues) 反馈问题
 - 邮箱: yunjinqi@gmail.com
+
+## Iteration 63 settlement observation contracts
+
+`direct_write_protocol` adds immutable `SettlementObservation` and
+`SettlementWriteBinding` values. A settlement grant binds the original
+UNCONFIRMED observation to its durable marker. Providers explicitly declare
+`settlement_required`; the conditional `SettlementRequiredProvider` contract
+adds observation validation and confirmation only for required routes.
+These values describe a binding; the provider must establish and validate
+query provenance, current account/session identity and expiry. The SDK's trusted
+verifier and commit port retain authorization and durability responsibilities.
+This is a breaking development contract, not account or release acceptance.

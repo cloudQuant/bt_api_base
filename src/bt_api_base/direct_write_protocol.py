@@ -19,6 +19,7 @@ a venue acceptance; those facts come only from the SDK and the venue.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from types import MappingProxyType
 from typing import Any, Mapping, Optional, Protocol, runtime_checkable
@@ -36,6 +37,9 @@ __all__ = (
     "PreDispatchCommitPort",
     "PreDispatchRecord",
     "SettlementStatus",
+    "SettlementObservation",
+    "SettlementRequiredProvider",
+    "SettlementWriteBinding",
     "WriteAdmissionDenied",
     "WriteGrant",
     "WriteGrantVerifier",
@@ -52,6 +56,76 @@ class WriteOperation(str, Enum):
     PLACE = "place"
     CANCEL = "cancel"
     SETTLEMENT_CONFIRM = "settlement_confirm"
+
+
+class SettlementStatus(str, Enum):
+    CONFIRMED = "confirmed"
+    UNCONFIRMED = "unconfirmed"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class SettlementObservation:
+    """Provider observation bound to one account, trading day and session."""
+
+    exchange_name: str
+    account_binding: str
+    trading_day: str
+    session_generation: int
+    status: SettlementStatus
+    observation_id: str
+
+    def __post_init__(self) -> None:
+        for value in (self.exchange_name, self.account_binding, self.observation_id):
+            if type(value) is not str or not value or value != value.strip() or len(value) > 256:
+                raise ValueError("invalid settlement observation reference")
+        if (type(self.trading_day) is not str or len(self.trading_day) != 8
+                or not self.trading_day.isascii() or not self.trading_day.isdigit()):
+            raise ValueError("invalid trading day")
+        try:
+            datetime.strptime(self.trading_day, "%Y%m%d")
+        except ValueError:
+            raise ValueError("invalid trading day") from None
+        if type(self.session_generation) is not int or self.session_generation <= 0:
+            raise ValueError("invalid settlement session generation")
+        if type(self.status) is not SettlementStatus:
+            raise ValueError("invalid settlement status")
+
+
+@dataclass(frozen=True)
+class SettlementWriteBinding:
+    """An unconfirmed observation and its pre-dispatch host marker."""
+
+    observation: SettlementObservation
+    marker_id: str
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.observation) is not SettlementObservation
+            or self.observation.status is not SettlementStatus.UNCONFIRMED
+        ):
+            raise ValueError("unconfirmed settlement observation required")
+        if (
+            type(self.marker_id) is not str or not self.marker_id
+            or self.marker_id != self.marker_id.strip() or len(self.marker_id) > 256
+        ):
+            raise ValueError("invalid settlement marker")
+
+
+@runtime_checkable
+class SettlementRequiredProvider(Protocol):
+    """Additional methods required only when settlement_required is True."""
+
+    def observe_settlement(self) -> Optional[SettlementObservation]:
+        """Read a session-bound settlement observation."""
+
+    def validate_settlement_observation(self, observation: SettlementObservation) -> bool:
+        """Return literal True only while the observation is current."""
+
+    def confirm_settlement(
+        self, grant: WriteGrant, verifier: WriteGrantVerifier, *, observation: SettlementObservation
+    ) -> SettlementStatus:
+        """Confirm exactly the observed statement under the supplied grant."""
 
 
 class DirectWriteError(RuntimeError):
@@ -123,6 +197,7 @@ class WriteGrant:
     session_generation: Optional[int]
     grant_id: str
     issued_monotonic_ns: int
+    settlement_binding: Optional[SettlementWriteBinding] = None
 
     def __post_init__(self) -> None:
         _text(self.exchange_name, "exchange_name")
@@ -135,6 +210,11 @@ class WriteGrant:
         _text(self.grant_id, "grant_id")
         if type(self.issued_monotonic_ns) is not int or self.issued_monotonic_ns <= 0:
             raise ValueError("issued_monotonic_ns must be a positive int")
+        if (
+            self.settlement_binding is not None
+            and type(self.settlement_binding) is not SettlementWriteBinding
+        ):
+            raise ValueError("invalid settlement binding")
 
 
 @runtime_checkable
@@ -148,6 +228,7 @@ class WriteGrantVerifier(Protocol):
         exchange_name: str,
         operation: WriteOperation,
         session_generation: Optional[int],
+        settlement_binding: Optional[SettlementWriteBinding] = None,
     ) -> None:
         """Consume ``grant`` once or raise :class:`WriteAdmissionDenied`."""
 
@@ -292,12 +373,6 @@ class DirectSubmitResult:
     identity: Optional[NativeOrderIdentity]
     error_code: Optional[str] = None
     detail: Optional[str] = None
-
-
-class SettlementStatus(str, Enum):
-    CONFIRMED = "confirmed"
-    UNCONFIRMED = "unconfirmed"
-    UNKNOWN = "unknown"
 
 
 @dataclass(frozen=True)
@@ -445,6 +520,7 @@ class DirectWriteProvider(Protocol):
     """
 
     direct_write_error_policy: DirectWriteErrorPolicy
+    settlement_required: bool
 
     def session_generation(self) -> Optional[int]:
         """Current native trading-session generation, or ``None`` if not logged in."""
@@ -475,12 +551,6 @@ class DirectWriteProvider(Protocol):
         verifier: WriteGrantVerifier,
     ) -> DirectSubmitResult:
         """Send one cancel for ``target`` using its original venue identity."""
-
-    def settlement_status(self) -> SettlementStatus:
-        """Read-only settlement confirmation state for the current trading day."""
-
-    def confirm_settlement(self, grant: WriteGrant, verifier: WriteGrantVerifier) -> SettlementStatus:
-        """Confirm the current trading day's settlement statement once."""
 
     def drain_execution_events(self, max_events: int) -> tuple[DirectExecutionEvent, ...]:
         """Return pending normalized returns in arrival order (non-blocking)."""
