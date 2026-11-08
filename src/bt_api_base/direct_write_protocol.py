@@ -22,7 +22,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from types import MappingProxyType
-from typing import Any, Mapping, Optional, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Mapping, Optional, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from bt_api_base.direct_cancel_protocol import PreparedCancelRequest
 
 __all__ = (
     "DirectExecutionEvent",
@@ -305,6 +308,7 @@ class PreDispatchRecord:
     trading_day: Optional[str]
     session_generation: Optional[int]
     created_at_utc: str
+    prepared_cancel: Optional["PreparedCancelRequest"] = None
 
     def __post_init__(self) -> None:
         if type(self.operation) is not WriteOperation:
@@ -315,9 +319,31 @@ class PreDispatchRecord:
             self, "request_summary", _frozen_fields(self.request_summary, "request_summary")
         )
         _text(self.created_at_utc, "created_at_utc")
+        self._validate_prepared_cancel()
+
+    def _validate_prepared_cancel(self) -> None:
+        if self.prepared_cancel is None:
+            return
+        from bt_api_base.direct_cancel_protocol import PreparedCancelRequest
+        from bt_api_base.gateway_direct_protocol import canonical_gateway_payload
+
+        prepared = self.prepared_cancel
+        if type(prepared) is not PreparedCancelRequest:
+            raise ValueError("invalid prepared cancel")
+        prepared.to_mapping()
+        if (self.operation is not WriteOperation.CANCEL or self.identity is not None
+                or type(self.target_identity) is not NativeOrderIdentity
+                or canonical_gateway_payload(self.target_identity.to_dict())
+                    != canonical_gateway_payload(prepared.target_identity.to_dict())
+                or self.exchange_name != prepared.target_identity.exchange_name
+                or self.symbol != prepared.symbol or self.trading_day != prepared.trading_day
+                or type(self.session_generation) is not int
+                or self.session_generation != prepared.session_generation):
+            raise ValueError("prepared cancel binding mismatch")
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        self._validate_prepared_cancel()
+        result = {
             "operation": self.operation.value,
             "host_scope": self.host_scope,
             "exchange_name": self.exchange_name,
@@ -331,6 +357,9 @@ class PreDispatchRecord:
             "session_generation": self.session_generation,
             "created_at_utc": self.created_at_utc,
         }
+        if self.prepared_cancel is not None:
+            result["prepared_cancel"] = self.prepared_cancel.to_mapping()
+        return result
 
 
 @runtime_checkable
@@ -369,7 +398,7 @@ class DirectExecutionEventKind(str, Enum):
 class DirectSubmitResult:
     """Synchronous outcome of handing one request to the native API."""
 
-    sent: bool
+    sent: Optional[bool]
     identity: Optional[NativeOrderIdentity]
     error_code: Optional[str] = None
     detail: Optional[str] = None

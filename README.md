@@ -595,3 +595,8 @@ association keys are exposed only as deterministic SHA-256 correlation labels,
 not as source authentication or anonymization. Source labels and arbitrary
 native identity fields are not included. The original command identity remains
 available through the separately authorized command-status contract.
+
+
+### Iteration 63: prepared cancel contract (R15)
+
+`direct_cancel_protocol.PreparedCancelRequest` records an immutable, bounded native cancellation preparation, including the original target identity, the separate dispatch day/generation, exact request fields and sorted unique attempt keys. Version 1 mapping and canonical digest checks do not authenticate a provider or authorize a write. `PreDispatchRecord.prepared_cancel` is optional and appears in serialized records only when supplied; its operation, route, target, symbol and dispatch scope must match. `DirectSubmitResult.sent` may be `None` for an uncertain synchronous result. Existing unprepared cancellation remains a separate API path. Provider support and complete Gateway behavior require independent verification.
