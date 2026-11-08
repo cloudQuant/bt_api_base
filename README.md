@@ -584,3 +584,14 @@ economics. Digests support durable comparison; they do not authenticate provider
 provenance, account access or trading permission. The Gateway owns persistence
 and attribution; provider/SDK code must establish native identity, trading-day
 and query completeness before supplying these values.
+
+## Iteration 63 public execution stream values
+
+`gateway_execution_stream_protocol` defines strict schema-v1 observations,
+events, pages and progress values for authenticated strategy delivery. Pages
+allow gaps in the account-wide sequence. Command attribution is supplied by the
+Gateway ledger; the values themselves grant no permission. Native identity and
+association keys are exposed only as deterministic SHA-256 correlation labels,
+not as source authentication or anonymization. Source labels and arbitrary
+native identity fields are not included. The original command identity remains
+available through the separately authorized command-status contract.
