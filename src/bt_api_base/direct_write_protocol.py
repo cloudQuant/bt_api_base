@@ -30,6 +30,7 @@ __all__ = (
     "DirectOrderStatus",
     "DirectSubmitResult",
     "DirectWriteError",
+    "DirectWriteErrorPolicy",
     "DirectWriteProvider",
     "NativeOrderIdentity",
     "PreDispatchCommitPort",
@@ -66,6 +67,30 @@ class DirectWriteError(RuntimeError):
 
 class WriteAdmissionDenied(DirectWriteError, PermissionError):
     """SDK write admission refused the operation; no native call happened."""
+
+
+@dataclass(frozen=True)
+class DirectWriteErrorPolicy:
+    """Provider-declared codes whose PLACE or CANCEL outcome is unknown.
+
+    Each field is an exact frozenset with at most 128 codes. Each code is an
+    exact nonempty trimmed string of at most 128 characters. Empty sets are
+    explicit declarations that no DirectWriteError code is classified unknown.
+    """
+
+    place_unknown_codes: frozenset[str]
+    cancel_unknown_codes: frozenset[str]
+
+    def __post_init__(self) -> None:
+        for name in ("place_unknown_codes", "cancel_unknown_codes"):
+            codes = getattr(self, name)
+            if type(codes) is not frozenset or len(codes) > 128:
+                raise ValueError(f"{name} must be a frozenset of at most 128 codes")
+            if any(
+                type(code) is not str or not code or len(code) > 128 or code != code.strip()
+                for code in codes
+            ):
+                raise ValueError(f"{name} contains an invalid code")
 
 
 def _text(value: Any, name: str) -> str:
@@ -418,6 +443,8 @@ class DirectWriteProvider(Protocol):
     ``verifier.consume(...)`` immediately before the native call and must not
     call the venue when consumption fails.
     """
+
+    direct_write_error_policy: DirectWriteErrorPolicy
 
     def session_generation(self) -> Optional[int]:
         """Current native trading-session generation, or ``None`` if not logged in."""
