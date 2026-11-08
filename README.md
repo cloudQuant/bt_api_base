@@ -610,3 +610,10 @@ available through the separately authorized command-status contract.
 ### Iteration 63 R17: versioned cancel sources and error observations
 
 PreparedCancelRequest optionally seals provider source labels in schema v2; None retains the exact v1 mapping and digest. Source labels do not authorize a request. CANCEL_ERROR facts may use explicit v2 with a cancel_request_key included in their digest, separating repeated cancellation attempts for one order. Existing v1 fact digests remain unchanged. New execution pages encode v2 with optional operation/attempt/prepared-digest attribution; old v1 pages are strictly decoded, and public observations retain their redacted v1 shape.
+
+
+### Iteration 63 R19 protocol additions
+
+`PreparedPlaceRequest` is a bounded immutable value for an explicitly selected prepared native placement. It binds the identity, day/generation, request fields, source labels and operation-specific keys; these values do not grant authority. `PreDispatchRecord.prepared_place` is optional and restricted to PLACE. Its absence preserves the prior marker encoding.
+
+Return fact v3 is restricted to source-associated ORDER_ERROR with a place request key and no order status; v1/v2 encodings and digests remain unchanged. Public execution event/page v3 adds `GatewayPlaceErrorAttribution(prepared_digest)` without exposing native request/source fields, and still decodes exact v1/v2 input. The common canonical payload format still rejects binary floats; providers choose an explicit representation for native values.

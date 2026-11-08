@@ -111,6 +111,7 @@ class GatewayReturnFact:
     session_generation: int | None = None
     schema_version: int = 1
     cancel_request_key: str | None = None
+    place_request_key: str | None = None
 
     _FIELDS: ClassVar[frozenset[str]] = frozenset(
         {
@@ -144,7 +145,7 @@ class GatewayReturnFact:
     def __post_init__(self) -> None:
         if (
             type(self.schema_version) is not int
-            or self.schema_version not in (1, 2)
+            or self.schema_version not in (1, 2, 3)
             or not all(_text(value) for value in (self.account_scope, self.route, self.source_ref))
             or type(self.instrument) is not MarketInstrumentKey
             or type(self.kind) is not DirectExecutionEventKind
@@ -158,14 +159,7 @@ class GatewayReturnFact:
             )
         ):
             _fail()
-        if (self.schema_version == 1 and self.cancel_request_key is not None) or (
-            self.schema_version == 2
-            and (
-                self.kind is not DirectExecutionEventKind.CANCEL_ERROR
-                or not _text(self.cancel_request_key)
-            )
-        ):
-            _fail()
+        self._validate_version()
         if (
             type(self.trading_day) is not str
             or len(self.trading_day) != 8
@@ -255,12 +249,12 @@ class GatewayReturnFact:
             _fail()
         _digest(self.to_mapping())  # Enforce the shared canonical payload size bound.
 
-    def to_mapping(self) -> dict[str, Any]:
-        """Return a detached JSON-compatible mapping in its explicit version."""
+    def _validate_version(self) -> None:
         if (
             type(self.schema_version) is not int
-            or self.schema_version not in (1, 2)
-            or (self.schema_version == 1 and self.cancel_request_key is not None)
+            or self.schema_version not in (1, 2, 3)
+            or (self.schema_version != 2 and self.cancel_request_key is not None)
+            or (self.schema_version != 3 and self.place_request_key is not None)
             or (
                 self.schema_version == 2
                 and (
@@ -268,8 +262,20 @@ class GatewayReturnFact:
                     or not _text(self.cancel_request_key)
                 )
             )
+            or (
+                self.schema_version == 3
+                and (
+                    self.kind is not DirectExecutionEventKind.ORDER_ERROR
+                    or self.status is not None
+                    or not _text(self.place_request_key)
+                )
+            )
         ):
             _fail()
+
+    def to_mapping(self) -> dict[str, Any]:
+        """Return a detached JSON-compatible mapping in its explicit version."""
+        self._validate_version()
         result = {
             "schema_version": self.schema_version,
             "account_scope": self.account_scope,
@@ -298,22 +304,27 @@ class GatewayReturnFact:
         }
         if self.schema_version == 2:
             result["cancel_request_key"] = self.cancel_request_key
+        if self.schema_version == 3:
+            result["place_request_key"] = self.place_request_key
         return result
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> GatewayReturnFact:
-        """Decode complete, exact v1/v2 mappings; errors omit input values."""
+        """Decode complete, exact versioned mappings; errors omit input values."""
         try:
             if (
                 not isinstance(raw, Mapping)
                 or any(type(k) is not str for k in raw)
                 or type(raw.get("schema_version")) is not int
-                or raw["schema_version"] not in (1, 2)
+                or raw["schema_version"] not in (1, 2, 3)
                 or set(raw)
                 != (
                     cls._FIELDS
                     if raw["schema_version"] == 1
-                    else cls._FIELDS | {"cancel_request_key"}
+                    else cls._FIELDS | {
+                        "cancel_request_key" if raw["schema_version"] == 2
+                        else "place_request_key"
+                    }
                 )
             ):
                 raise ValueError

@@ -126,17 +126,21 @@ def test_fact_wire_rejects_v2_for_any_non_cancel_kind(trade):
         GatewayReturnFact.from_mapping(raw)
 
 
-def test_page_v2_exposes_only_attribution_and_accepts_old_v1_page(trade):
+def test_page_v3_exposes_only_attribution_and_accepts_old_pages(trade):
     attribution = GatewayCancelErrorAttribution("cancel-op", "attempt-id", "f" * 64)
     page = _page(_cancel_fact(trade), attribution=attribution)
     raw = page.to_mapping()
-    assert raw["schema_version"] == 2
+    assert raw["schema_version"] == 3
     assert raw["events"][0]["cancel_attribution"] == attribution.to_mapping()
     assert raw["events"][0]["observation"]["schema_version"] == 1
     encoded = json.dumps(raw)
     assert "native-attempt-one" not in encoded and "cancel_request_key" not in encoded
     assert "source_ref" not in encoded and "session_generation" not in encoded
     assert GatewayExecutionStreamPage.from_mapping(raw, expected_binding=page.binding) == page
+    old_v2 = page.to_mapping()
+    old_v2["schema_version"] = 2
+    old_v2["events"] = [event.to_mapping(schema_version=2) for event in page.events]
+    assert GatewayExecutionStreamPage.from_mapping(old_v2, expected_binding=page.binding) == page
 
     legacy = _page(trade)
     old = legacy.to_mapping()
@@ -144,7 +148,7 @@ def test_page_v2_exposes_only_attribution_and_accepts_old_v1_page(trade):
     old["events"] = [event.to_mapping(schema_version=1) for event in legacy.events]
     restored = GatewayExecutionStreamPage.from_mapping(old, expected_binding=legacy.binding)
     assert restored == legacy and restored.events[0].cancel_attribution is None
-    assert restored.to_mapping()["schema_version"] == 2
+    assert restored.to_mapping()["schema_version"] == 3
     assert (
         GatewayExecutionStreamProgress(
             legacy.binding, legacy.consumer_ref, legacy.epoch, 1, 0

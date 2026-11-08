@@ -317,6 +317,25 @@ class GatewayCancelErrorAttribution:
 
 
 @dataclass(frozen=True, slots=True)
+class GatewayPlaceErrorAttribution:
+    """Public digest of one persisted preparation; not source authority."""
+
+    prepared_digest: str
+
+    def __post_init__(self) -> None:
+        if not _digest(self.prepared_digest):
+            _fail()
+
+    def to_mapping(self) -> dict[str, str]:
+        self.__post_init__()
+        return {"prepared_digest": self.prepared_digest}
+
+    @classmethod
+    def from_mapping(cls, raw: object) -> GatewayPlaceErrorAttribution:
+        return cls(**_mapping(raw, {"prepared_digest"}))
+
+
+@dataclass(frozen=True, slots=True)
 class GatewayExecutionStreamEvent:
     sequence: int
     request_key: str
@@ -326,6 +345,7 @@ class GatewayExecutionStreamEvent:
     fact_digest: str
     observation: GatewayExecutionObservation
     cancel_attribution: GatewayCancelErrorAttribution | None = None
+    place_attribution: GatewayPlaceErrorAttribution | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -343,39 +363,65 @@ class GatewayExecutionStreamEvent:
                     or self.observation.kind is not DirectExecutionEventKind.CANCEL_ERROR
                 )
             )
+            or (
+                self.place_attribution is not None
+                and (
+                    type(self.place_attribution) is not GatewayPlaceErrorAttribution
+                    or self.observation.kind is not DirectExecutionEventKind.ORDER_ERROR
+                    or self.observation.status is not None
+                    or self.cancel_attribution is not None
+                )
+            )
         ):
             _fail()
         if self.cancel_attribution is not None:
             self.cancel_attribution.__post_init__()
+        if self.place_attribution is not None:
+            self.place_attribution.__post_init__()
 
-    def to_mapping(self, *, schema_version: int = 2) -> dict[str, Any]:
+    def to_mapping(self, *, schema_version: int = 3) -> dict[str, Any]:
         self.__post_init__()
-        if type(schema_version) is not int or schema_version not in (1, 2):
+        if type(schema_version) is not int or schema_version not in (1, 2, 3):
             _fail()
         if schema_version == 1 and self.cancel_attribution is not None:
             _fail()
+        if schema_version in (1, 2) and self.place_attribution is not None:
+            _fail()
         result = {
             name: (self.observation.to_mapping() if name == "observation" else getattr(self, name))
-            for name in (f.name for f in fields(self) if f.name != "cancel_attribution")
+            for name in (
+                f.name for f in fields(self)
+                if f.name not in {"cancel_attribution", "place_attribution"}
+            )
         }
-        if schema_version == 2:
+        if schema_version >= 2:
             result["cancel_attribution"] = (
                 None if self.cancel_attribution is None else self.cancel_attribution.to_mapping()
+            )
+        if schema_version == 3:
+            result["place_attribution"] = (
+                None if self.place_attribution is None else self.place_attribution.to_mapping()
             )
         return result
 
     @classmethod
-    def from_mapping(cls, raw: object, *, schema_version: int = 2) -> GatewayExecutionStreamEvent:
-        if type(schema_version) is not int or schema_version not in (1, 2):
+    def from_mapping(cls, raw: object, *, schema_version: int = 3) -> GatewayExecutionStreamEvent:
+        if type(schema_version) is not int or schema_version not in (1, 2, 3):
             _fail()
         names = {f.name for f in fields(cls)}
         if schema_version == 1:
             names.remove("cancel_attribution")
+        if schema_version < 3:
+            names.remove("place_attribution")
         data = _mapping(raw, names)
         data["observation"] = GatewayExecutionObservation.from_mapping(data["observation"])
-        if schema_version == 2 and data["cancel_attribution"] is not None:
+        if schema_version >= 2 and data["cancel_attribution"] is not None:
             data["cancel_attribution"] = GatewayCancelErrorAttribution.from_mapping(
                 data["cancel_attribution"]
+            )
+        if schema_version == 3 and data["place_attribution"] is not None:
+            data["place_attribution"] = GatewayPlaceErrorAttribution.from_mapping(
+                data["place_attribution"]
             )
         return cls(**data)
 
@@ -504,14 +550,14 @@ class GatewayExecutionStreamPage:
 
     def to_mapping(self) -> dict[str, Any]:
         return {
-            "schema_version": 2,
+            "schema_version": 3,
             "binding": _binding_mapping(self.binding),
             "consumer_ref": self.consumer_ref,
             "epoch": self.epoch,
             "offered_sequence": self.offered_sequence,
             "acknowledged_sequence": self.acknowledged_sequence,
             "has_more": self.has_more,
-            "events": [event.to_mapping(schema_version=2) for event in self.events],
+            "events": [event.to_mapping(schema_version=3) for event in self.events],
         }
 
     @classmethod
@@ -522,7 +568,7 @@ class GatewayExecutionStreamPage:
         expected_binding: GatewayCommandBinding,
         expected_consumer_ref: str | None = None,
     ) -> GatewayExecutionStreamPage:
-        data = _parse_outer(cls, raw, expected_binding, expected_consumer_ref, (1, 2))
+        data = _parse_outer(cls, raw, expected_binding, expected_consumer_ref, (1, 2, 3))
         if type(data["events"]) is not list or len(data["events"]) > 256:
             _fail()
         data["events"] = tuple(

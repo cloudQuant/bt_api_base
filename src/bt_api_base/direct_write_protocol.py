@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any, Mapping, Optional, Protocol, runtime_chec
 
 if TYPE_CHECKING:
     from bt_api_base.direct_cancel_protocol import PreparedCancelRequest
+    from bt_api_base.direct_place_protocol import PreparedPlaceRequest
 
 __all__ = (
     "DirectExecutionEvent",
@@ -309,6 +310,7 @@ class PreDispatchRecord:
     session_generation: Optional[int]
     created_at_utc: str
     prepared_cancel: Optional["PreparedCancelRequest"] = None
+    prepared_place: Optional["PreparedPlaceRequest"] = None
 
     def __post_init__(self) -> None:
         if type(self.operation) is not WriteOperation:
@@ -320,6 +322,32 @@ class PreDispatchRecord:
         )
         _text(self.created_at_utc, "created_at_utc")
         self._validate_prepared_cancel()
+        self._validate_prepared_place()
+
+    def _validate_prepared_place(self) -> None:
+        if self.prepared_place is None:
+            return
+        from bt_api_base.direct_place_protocol import PreparedPlaceRequest
+        from bt_api_base.gateway_direct_protocol import canonical_gateway_payload
+
+        prepared = self.prepared_place
+        if type(prepared) is not PreparedPlaceRequest:
+            raise ValueError("invalid prepared place")
+        prepared.to_mapping()
+        if (
+            self.operation is not WriteOperation.PLACE
+            or self.prepared_cancel is not None
+            or self.target_identity is not None
+            or type(self.identity) is not NativeOrderIdentity
+            or canonical_gateway_payload(self.identity.to_dict())
+            != canonical_gateway_payload(prepared.identity.to_dict())
+            or self.exchange_name != prepared.identity.exchange_name
+            or self.symbol != prepared.symbol
+            or self.trading_day != prepared.trading_day
+            or type(self.session_generation) is not int
+            or self.session_generation != prepared.session_generation
+        ):
+            raise ValueError("prepared place binding mismatch")
 
     def _validate_prepared_cancel(self) -> None:
         if self.prepared_cancel is None:
@@ -343,6 +371,7 @@ class PreDispatchRecord:
 
     def to_dict(self) -> dict[str, Any]:
         self._validate_prepared_cancel()
+        self._validate_prepared_place()
         result = {
             "operation": self.operation.value,
             "host_scope": self.host_scope,
@@ -359,6 +388,8 @@ class PreDispatchRecord:
         }
         if self.prepared_cancel is not None:
             result["prepared_cancel"] = self.prepared_cancel.to_mapping()
+        if self.prepared_place is not None:
+            result["prepared_place"] = self.prepared_place.to_mapping()
         return result
 
 
