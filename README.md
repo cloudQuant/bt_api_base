@@ -574,3 +574,13 @@ These values describe a binding; the provider must establish and validate
 query provenance, current account/session identity and expiry. The SDK's trusted
 verifier and commit port retain authorization and durability responsibilities.
 This is a breaking development contract, not account or release acceptance.
+
+## Iteration 63 normalized execution returns
+
+`gateway_execution_protocol.GatewayReturnFact` is an immutable schema-v1 value
+for trusted local adapters. Its strict mapping codec retains missing fields,
+uses canonical decimal strings and separates full fact identity from trade
+economics. Digests support durable comparison; they do not authenticate provider
+provenance, account access or trading permission. The Gateway owns persistence
+and attribution; provider/SDK code must establish native identity, trading-day
+and query completeness before supplying these values.
