@@ -617,3 +617,21 @@ PreparedCancelRequest optionally seals provider source labels in schema v2; None
 `PreparedPlaceRequest` is a bounded immutable value for an explicitly selected prepared native placement. It binds the identity, day/generation, request fields, source labels and operation-specific keys; these values do not grant authority. `PreDispatchRecord.prepared_place` is optional and restricted to PLACE. Its absence preserves the prior marker encoding.
 
 Return fact v3 is restricted to source-associated ORDER_ERROR with a place request key and no order status; v1/v2 encodings and digests remain unchanged. Public execution event/page v3 adds `GatewayPlaceErrorAttribution(prepared_digest)` without exposing native request/source fields, and still decodes exact v1/v2 input. The common canonical payload format still rejects binary floats; providers choose an explicit representation for native values.
+
+## Iteration 63 trade natural-date contracts (R30)
+
+GatewayReturnFact v4 is a TRADE-only fact with optional trade_date: a strict valid
+Gregorian YYYYMMDD value, or None for unknown. Versions 1-3 keep their exact
+mapping and digest formats. The fact digest includes v4/date, while the economic
+trade-content digest keeps its original fields so date enrichment is not another
+fill. These values do not establish source authenticity or a venue timestamp.
+
+GatewayExecutionObservation has an independent v2 for trade_date and the strict
+boolean trade_metadata_only. A metadata-only observation requires a known date
+and the trade key, quantity, price, side and venue-key correlation fields. Whether
+the original trade exists and belongs to this command remains a journal/consumer
+check. Ordinary incomplete trade observations retain their previous behavior.
+Observation v1 remains byte-compatible; the outer event/page formats are unchanged
+and retain each nested observation version. Old clients reject the new nested
+version rather than silently dropping its semantics. No TradingDay, local clock,
+timezone or fee inference is introduced.

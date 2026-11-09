@@ -65,6 +65,16 @@ def _decimal(value: object, *, positive: bool) -> bool:
     )
 
 
+def _date(value: object) -> bool:
+    if type(value) is not str or len(value) != 8 or not value.isascii() or not value.isdigit():
+        return False
+    try:
+        datetime.strptime(value, "%Y%m%d")
+    except ValueError:
+        return False
+    return True
+
+
 def _key_tuple(value: object, *, min_size: int, max_size: int, sorted_unique: bool) -> bool:
     return (
         type(value) is tuple
@@ -112,6 +122,7 @@ class GatewayReturnFact:
     schema_version: int = 1
     cancel_request_key: str | None = None
     place_request_key: str | None = None
+    trade_date: str | None = None
 
     _FIELDS: ClassVar[frozenset[str]] = frozenset(
         {
@@ -145,7 +156,7 @@ class GatewayReturnFact:
     def __post_init__(self) -> None:
         if (
             type(self.schema_version) is not int
-            or self.schema_version not in (1, 2, 3)
+            or self.schema_version not in (1, 2, 3, 4)
             or not all(_text(value) for value in (self.account_scope, self.route, self.source_ref))
             or type(self.instrument) is not MarketInstrumentKey
             or type(self.kind) is not DirectExecutionEventKind
@@ -160,15 +171,9 @@ class GatewayReturnFact:
         ):
             _fail()
         self._validate_version()
-        if (
-            type(self.trading_day) is not str
-            or len(self.trading_day) != 8
-            or not self.trading_day.isascii()
-            or not self.trading_day.isdigit()
-        ):
+        if not _date(self.trading_day):
             _fail()
         try:
-            datetime.strptime(self.trading_day, "%Y%m%d")
             instrument = MarketInstrumentKey.from_dict(self.instrument.to_dict())
         except Exception:
             _fail()
@@ -252,9 +257,17 @@ class GatewayReturnFact:
     def _validate_version(self) -> None:
         if (
             type(self.schema_version) is not int
-            or self.schema_version not in (1, 2, 3)
+            or self.schema_version not in (1, 2, 3, 4)
             or (self.schema_version != 2 and self.cancel_request_key is not None)
             or (self.schema_version != 3 and self.place_request_key is not None)
+            or (self.schema_version != 4 and self.trade_date is not None)
+            or (
+                self.schema_version == 4
+                and (
+                    self.kind is not DirectExecutionEventKind.TRADE
+                    or (self.trade_date is not None and not _date(self.trade_date))
+                )
+            )
             or (
                 self.schema_version == 2
                 and (
@@ -306,6 +319,8 @@ class GatewayReturnFact:
             result["cancel_request_key"] = self.cancel_request_key
         if self.schema_version == 3:
             result["place_request_key"] = self.place_request_key
+        if self.schema_version == 4:
+            result["trade_date"] = self.trade_date
         return result
 
     @classmethod
@@ -316,14 +331,16 @@ class GatewayReturnFact:
                 not isinstance(raw, Mapping)
                 or any(type(k) is not str for k in raw)
                 or type(raw.get("schema_version")) is not int
-                or raw["schema_version"] not in (1, 2, 3)
+                or raw["schema_version"] not in (1, 2, 3, 4)
                 or set(raw)
                 != (
                     cls._FIELDS
                     if raw["schema_version"] == 1
-                    else cls._FIELDS | {
-                        "cancel_request_key" if raw["schema_version"] == 2
-                        else "place_request_key"
+                    else cls._FIELDS
+                    | {
+                        {2: "cancel_request_key", 3: "place_request_key", 4: "trade_date"}[
+                            raw["schema_version"]
+                        ]
                     }
                 )
             ):

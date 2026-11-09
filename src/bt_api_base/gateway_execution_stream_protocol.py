@@ -116,8 +116,36 @@ class GatewayExecutionObservation:
     trade_price: str | None = None
     trade_time: str | None = None
     error_code: str | None = None
+    schema_version: int = 1
+    trade_date: str | None = None
+    trade_metadata_only: bool = False
 
     def __post_init__(self) -> None:
+        if (
+            type(self.schema_version) is not int
+            or self.schema_version not in (1, 2)
+            or type(self.trade_metadata_only) is not bool
+            or (
+                self.schema_version == 1
+                and (self.trade_date is not None or self.trade_metadata_only)
+            )
+            or (self.schema_version == 2 and self.kind is not DirectExecutionEventKind.TRADE)
+            or (self.trade_metadata_only and self.trade_date is None)
+            or (
+                self.trade_metadata_only
+                and any(
+                    value is None
+                    for value in (
+                        self.trade_key_digest,
+                        self.trade_quantity,
+                        self.trade_price,
+                        self.side,
+                        self.venue_key_digest,
+                    )
+                )
+            )
+        ):
+            _fail()
         for keys in (self.identity_key_digests, self.binding_key_digests):
             if (
                 type(keys) is not tuple
@@ -146,6 +174,8 @@ class GatewayExecutionObservation:
         try:
             fact = GatewayReturnFact(
                 **data,
+                schema_version=4 if self.schema_version == 2 else 1,
+                trade_date=self.trade_date,
                 source_ref="public-observation",
                 identity=None
                 if self.native_identity_digest is None
@@ -164,9 +194,10 @@ class GatewayExecutionObservation:
         object.__setattr__(self, "instrument", fact.instrument)
 
     def to_mapping(self) -> dict[str, Any]:
+        self.__post_init__()
         result = {name: getattr(self, name) for name in _ECONOMIC_FIELDS}
         result.update(
-            schema_version=1,
+            schema_version=self.schema_version,
             instrument=self.instrument.to_dict(),
             kind=self.kind.value,
             native_identity_digest=self.native_identity_digest,
@@ -176,14 +207,25 @@ class GatewayExecutionObservation:
             venue_key_digest=self.venue_key_digest,
             trade_key_digest=self.trade_key_digest,
         )
+        if self.schema_version == 2:
+            result.update(trade_date=self.trade_date, trade_metadata_only=self.trade_metadata_only)
         return result
 
     @classmethod
     def from_mapping(cls, raw: object) -> GatewayExecutionObservation:
         try:
-            data = _mapping(raw, {f.name for f in fields(cls)} | {"schema_version"})
-            if type(data.pop("schema_version")) is not int or raw["schema_version"] != 1:
+            if type(raw) is not dict:
                 _fail()
+            version = raw.get("schema_version")
+            if type(version) is not int or version not in (1, 2):
+                _fail()
+            names = {f.name for f in fields(cls)}
+            if version == 1:
+                names -= {"trade_date", "trade_metadata_only"}
+            data = _mapping(raw, names)
+            data.pop("schema_version")
+            trade_date = data.pop("trade_date", None)
+            trade_metadata_only = data.pop("trade_metadata_only", False)
             keys = data.pop("identity_key_digests")
             binding = data.pop("binding_key_digests")
             venue, trade = data.pop("venue_key_digest"), data.pop("trade_key_digest")
@@ -207,7 +249,7 @@ class GatewayExecutionObservation:
             )
             fact_data = dict(
                 data,
-                schema_version=1,
+                schema_version=4 if version == 2 else 1,
                 source_ref="public-observation",
                 session_generation=None,
                 identity=placeholder,
@@ -216,9 +258,14 @@ class GatewayExecutionObservation:
                 venue_key=venue,
                 trade_key=None if trade is None else ["digest", trade],
             )
+            if version == 2:
+                fact_data["trade_date"] = trade_date
             fact = GatewayReturnFact.from_mapping(fact_data)
             return cls(
                 **{name: getattr(fact, name) for name in _ECONOMIC_FIELDS},
+                schema_version=version,
+                trade_date=trade_date,
+                trade_metadata_only=trade_metadata_only,
                 native_identity_digest=native_identity_digest,
                 identity_key_digests=tuple(keys),
                 binding_key_digests=tuple(binding),
@@ -243,13 +290,18 @@ _ECONOMIC_FIELDS = tuple(
         "binding_key_digests",
         "venue_key_digest",
         "trade_key_digest",
+        "schema_version",
+        "trade_date",
+        "trade_metadata_only",
     }
 )
 
 
-def project_gateway_execution_observation(fact: GatewayReturnFact) -> GatewayExecutionObservation:
+def project_gateway_execution_observation(
+    fact: GatewayReturnFact, *, trade_metadata_only: bool = False
+) -> GatewayExecutionObservation:
     """Redact a validated fact; digests are correlation tags, not provenance."""
-    if type(fact) is not GatewayReturnFact:
+    if type(fact) is not GatewayReturnFact or type(trade_metadata_only) is not bool:
         _fail()
     try:
         fact = GatewayReturnFact.from_mapping(fact.to_mapping())
@@ -279,6 +331,9 @@ def project_gateway_execution_observation(fact: GatewayReturnFact) -> GatewayExe
     )
     return GatewayExecutionObservation(
         **{name: getattr(fact, name) for name in _ECONOMIC_FIELDS},
+        schema_version=2 if fact.schema_version == 4 else 1,
+        trade_date=fact.trade_date,
+        trade_metadata_only=trade_metadata_only,
         native_identity_digest=native_identity_digest,
         identity_key_digests=tuple(sorted({key_digest(key) for key in fact.identity_keys})),
         binding_key_digests=tuple(sorted({key_digest(key) for key in fact.binding_keys})),
@@ -390,7 +445,8 @@ class GatewayExecutionStreamEvent:
         result = {
             name: (self.observation.to_mapping() if name == "observation" else getattr(self, name))
             for name in (
-                f.name for f in fields(self)
+                f.name
+                for f in fields(self)
                 if f.name not in {"cancel_attribution", "place_attribution"}
             )
         }
