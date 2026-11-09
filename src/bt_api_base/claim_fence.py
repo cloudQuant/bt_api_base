@@ -1,8 +1,13 @@
 """Owner-local claim fence primitives. They do not establish authorization.
 
-Normal construction cannot publish READY or issue claims. Trusted composition,
-source coverage, persisted intent, recovery and provider identity are external.
-The private test constructor is synthetic only, never a production enabler.
+Normal construction cannot publish READY or issue claims. A production core can
+publish READY only after its trusted composition root seals coverage through the
+one-time :class:`CoverageSealer` returned by :meth:`ClaimFence.with_sealer`.
+The seal is the composition's attestation that every writer of each selected
+domain begins a change before its state becomes visible; the core cannot prove
+that by itself, so writer coverage remains an audited composition contract.
+Persisted intent, recovery and provider identity stay external. The private
+test constructor is synthetic only, never a production enabler.
 """
 from __future__ import annotations
 
@@ -144,6 +149,21 @@ class ClaimFence:
                                optional_domains=optional_domains)
 
     @classmethod
+    def with_sealer(cls, account: str, owner_generation: str, *, domains: tuple,
+                    schema: ClaimSchema, optional_domains: tuple = (), max_commands: int = 4096,
+                    max_snapshots: int = 4096, max_validity_ns: int = 2_000_000_000):
+        """Return a production core and its single, private coverage sealer.
+
+        Only the composition root that wires every writer should keep the
+        sealer; components receive the core alone. Until sealed, the core
+        behaves exactly like normal construction (no READY, no claims).
+        """
+        instance = cls(account, owner_generation, domains=domains, schema=schema,
+                       optional_domains=optional_domains, max_commands=max_commands,
+                       max_snapshots=max_snapshots, max_validity_ns=max_validity_ns)
+        return instance, CoverageSealer(instance, instance._seal)
+
+    @classmethod
     def _for_test(cls, account: str, owner_generation: str, *, domains: tuple, schema: ClaimSchema,
                   optional_domains: tuple = (), max_commands: int = 4096,
                   max_snapshots: int = 4096, max_validity_ns: int = 2_000_000_000):
@@ -178,6 +198,10 @@ class ClaimFence:
         self._seal, self._lock = object(), threading.Lock()
         self._closed = False
         self._faulted = False
+        self._sealed = False
+        self._sealer_issued = False
+        self._coverage = None
+        self._not_selected = ()
         self._sequence = 0
         # Each domain is [epoch, status, active tokens, merged result, poisoned].
         self._domains = {name: [0, _UNAVAILABLE, {}, None, False] for name in self._domain_names}
@@ -241,6 +265,8 @@ class ClaimFence:
                 state = self._domains[domain]
                 if state[4]:
                     raise _ExpectedRefusal("DOMAIN_POISONED")
+                if domain in self._not_selected:
+                    raise _ExpectedRefusal("DOMAIN_NOT_SELECTED")
                 if len(state[2]) >= self._max_snapshots:
                     ClaimFence._poison_locked(self, state)
                     raise _ExpectedRefusal("CHANGE_CAPACITY")
@@ -273,9 +299,12 @@ class ClaimFence:
                         or sequence in self._writer_changes):
                     raise _ExpectedRefusal("INVALID_CHANGE")
                 del state[2][sequence]
-                # A public status cannot certify source coverage.  Without a real
-                # coverage capability, READY is refused even after a mutation.
-                no_coverage = status == _READY and not self._test_only
+                # A public status cannot certify source coverage by itself: READY
+                # needs the composition's sealed attestation (or a synthetic test
+                # core).  NOT_SELECTED is fixed by the seal in production.
+                no_coverage = (not self._test_only
+                               and (status == _NOT_SELECTED
+                                    or (status == _READY and not self._sealed)))
                 result = _UNAVAILABLE if no_coverage else status
                 state[3] = result if state[3] is None else (
                     result if state[3] == result else _UNAVAILABLE
@@ -339,7 +368,7 @@ class ClaimFence:
         state[3] = None
 
     def _versions_locked(self) -> tuple[tuple[str, int, str], ...]:
-        if not self._test_only:
+        if not self._test_only and not self._sealed:
             raise _ExpectedRefusal("COVERAGE_UNAVAILABLE")
         vector = []
         for name in self._domain_names:
@@ -604,9 +633,10 @@ class ClaimFence:
                 self._faulted = True
                 raise
 
-    def _writer_finish(self, handle, wrapper, poison: bool):
+    def _writer_finish(self, handle, wrapper, poison: bool, ready: bool = False):
         ClaimFence._process(self)
-        if type(wrapper) is not _WriterChange or type(poison) is not bool:
+        if (type(wrapper) is not _WriterChange or type(poison) is not bool
+                or type(ready) is not bool or (poison and ready)):
             raise DispatchClaimError("INVALID_CHANGE")
         with self._lock:
             try:
@@ -621,14 +651,17 @@ class ClaimFence:
                         or entry[2] is not wrapper or wrapper.handle is not handle
                         or state[2].get(token.sequence) is not token or state[4]):
                     raise _ExpectedRefusal("INVALID_CHANGE")
+                if ready and not (self._sealed or self._test_only):
+                    raise _ExpectedRefusal("COVERAGE_UNAVAILABLE")
                 del self._writer_changes[token.sequence]
                 if poison:
                     ClaimFence._poison_locked(self, state)
                     return
                 del state[2][token.sequence]
-                state[3] = _UNAVAILABLE
+                result = _READY if ready else _UNAVAILABLE
+                state[3] = result if state[3] in (None, result) else _UNAVAILABLE
                 if not state[2]:
-                    state[1] = _UNAVAILABLE
+                    state[1] = state[3]
                     state[3] = None
 
             except _ExpectedRefusal as failure:
@@ -689,6 +722,117 @@ class ClaimFence:
             except BaseException:
                 self._faulted = True
                 raise
+
+    def retire(self, claim: DispatchClaim) -> None:
+        """Forget one in-flight claim after its outcome is durably recorded.
+
+        Retiring removes only the in-memory duplicate guard. The caller must
+        already have persisted a state that cannot be prepared again (for
+        example a dispatch marker that left RESERVED); otherwise the same
+        command could be claimed twice.
+        """
+        ClaimFence._process(self)
+        if type(claim) is not DispatchClaim or claim._seal is not self._seal:
+            raise DispatchClaimError("INVALID_CLAIM")
+        with self._lock:
+            try:
+                ClaimFence._active(self)
+                binding = claim.binding
+                if type(binding) is not tuple or len(binding) != len(self._schema.fields):
+                    raise _ExpectedRefusal("INVALID_CLAIM")
+                key = tuple(binding[i] for i in self._schema.key_indices)
+                saved = self._commands.get(key)
+                if saved is None or saved[1] != "IN_FLIGHT" or saved[2] is not binding:
+                    raise _ExpectedRefusal("INVALID_CLAIM")
+                del self._commands[key]
+                self._candidates.pop(saved[0].sequence, None)
+
+            except _ExpectedRefusal as failure:
+                raise DispatchClaimError(failure.code) from None
+            except BaseException:
+                self._faulted = True
+                raise
+
+    def abandon(self, candidate: _Candidate) -> bool:
+        """Drop a prepared but never claimed candidate; returns False if unknown.
+
+        A candidate already claimed stays registered until :meth:`retire`.
+        """
+        ClaimFence._process(self)
+        if type(candidate) is not _Candidate or candidate._seal is not self._seal:
+            raise DispatchClaimError("INVALID_CANDIDATE")
+        with self._lock:
+            try:
+                ClaimFence._active(self)
+                entry = self._candidates.get(candidate.sequence)
+                if entry is None or entry[0] is not candidate:
+                    return False
+                saved = self._commands.get(entry[1])
+                if saved is None or saved[0] is not candidate:
+                    return False
+                if saved[1] != "PREPARED":
+                    raise _ExpectedRefusal("ALREADY_CLAIMED")
+                del self._commands[entry[1]]
+                del self._candidates[candidate.sequence]
+                return True
+
+            except _ExpectedRefusal as failure:
+                raise DispatchClaimError(failure.code) from None
+            except BaseException:
+                self._faulted = True
+                raise
+
+    def _seal_coverage(self, seal, coverage, not_selected) -> None:
+        ClaimFence._process(self)
+        if seal is not self._seal:
+            raise DispatchClaimError("INVALID_SEALER")
+        if (type(coverage) is not dict or type(not_selected) is not tuple
+                or len(set(not_selected)) != len(not_selected)
+                or any(type(name) is not str or name not in self._optional_domains
+                       for name in not_selected)):
+            raise DispatchClaimError("INVALID_COVERAGE")
+        required = tuple(name for name in self._domain_names if name not in not_selected)
+        if set(coverage) != set(required):
+            raise DispatchClaimError("COVERAGE_INCOMPLETE")
+        frozen = {}
+        for name in required:
+            writers = coverage[name]
+            if (type(writers) is not tuple or not writers or len(set(writers)) != len(writers)
+                    or any(not _text(label) for label in writers)):
+                raise DispatchClaimError("INVALID_COVERAGE")
+            frozen[name] = tuple(label for label in writers)
+        with self._lock:
+            try:
+                ClaimFence._active(self)
+                if self._sealed:
+                    raise _ExpectedRefusal("COVERAGE_SEALED")
+                for name in not_selected:
+                    state = self._domains[name]
+                    if state[4] or state[2] or any(
+                            entry[1] == name for entry in self._writer_handles.values()):
+                        raise _ExpectedRefusal("INVALID_COVERAGE")
+                for name in not_selected:
+                    state = self._domains[name]
+                    state[0] += 1
+                    state[1] = _NOT_SELECTED
+                self._not_selected = tuple(not_selected)
+                self._coverage = tuple(sorted(frozen.items()))
+                self._sealed = True
+
+            except _ExpectedRefusal as failure:
+                raise DispatchClaimError(failure.code) from None
+            except BaseException:
+                self._faulted = True
+                raise
+
+    def coverage_status(self) -> dict:
+        """Report the sealed attestation for diagnostics; it proves nothing alone."""
+        ClaimFence._process(self)
+        with self._lock:
+            return {"sealed": self._sealed, "not_selected": self._not_selected,
+                    "coverage": self._coverage,
+                    "domains": tuple((name, self._domains[name][1], bool(self._domains[name][4]))
+                                     for name in self._domain_names)}
 
     def capacity_status(self) -> dict[str, int]:
         """Expose counts for monitoring; this neither evicts nor proves safety."""
@@ -774,3 +918,31 @@ class ClaimFenceWriter:
 
     def poison(self, token):
         ClaimFence._writer_finish(self._coordinator, self, token, True)
+
+    def finish_ready(self, token):
+        """Publish READY for this writer's change; needs a sealed coverage attestation."""
+        ClaimFence._writer_finish(self._coordinator, self, token, False, True)
+
+
+class CoverageSealer:
+    """One-time capability to seal a production core's writer coverage.
+
+    The composition root keeps this object private. ``seal`` records which
+    writers it attached for every selected domain and fixes non-selected
+    optional domains; afterwards covered writers may publish READY.  The
+    attestation is only as strong as the audited writer wiring it describes.
+    """
+
+    __slots__ = ("_core", "_seal", "_used")
+
+    def __init__(self, core, seal):
+        if type(core) is not ClaimFence or seal is not core._seal or core._sealer_issued:
+            raise DispatchClaimError("INVALID_SEALER")
+        core._sealer_issued = True
+        self._core, self._seal, self._used = core, seal, False
+
+    def seal(self, coverage: dict, *, not_selected: tuple = ()) -> None:
+        if self._used:
+            raise DispatchClaimError("COVERAGE_SEALED")
+        self._used = True
+        ClaimFence._seal_coverage(self._core, self._seal, coverage, not_selected)

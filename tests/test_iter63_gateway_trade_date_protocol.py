@@ -156,15 +156,21 @@ def test_exact_versioned_keys_and_strict_flag(trade):
 
 
 def test_projection_only_accepts_metadata_for_known_date(trade):
-    for fact in (trade, replace(trade, schema_version=4)):
+    # Metadata-only supplements need a v4 fact carrying a natural date or a
+    # trade time (date and time may come from distinct trusted facts).
+    for fact in (trade, replace(trade, schema_version=4, trade_time=None)):
         with pytest.raises(GatewayExecutionStreamProtocolError):
             project_gateway_execution_observation(fact, trade_metadata_only=True)
+    time_only = project_gateway_execution_observation(
+        replace(trade, schema_version=4), trade_metadata_only=True)
+    assert time_only.trade_date is None and time_only.trade_time == trade.trade_time
     dated = replace(trade, schema_version=4, trade_date="20261107")
     with pytest.raises(GatewayExecutionStreamProtocolError):
         GatewayExecutionObservation.from_mapping(
             dict(
                 project_gateway_execution_observation(dated).to_mapping(),
                 trade_date=None,
+                trade_time=None,
                 trade_metadata_only=True,
             )
         )
