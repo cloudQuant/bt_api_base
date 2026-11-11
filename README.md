@@ -79,6 +79,41 @@ bt_api_base/
 └── docs/                  # API documentation
 ```
 
+### Email notifications
+
+`bt_api_base.email_sender.send_email` provides an explicit, synchronous SMTP
+transport for a single plain-text message. The caller supplies the server,
+sender, recipients and optional credentials. It does not schedule alerts,
+read configuration, retry or send anything during import.
+
+```python
+from bt_api_base.email_sender import send_email
+
+# Supply these values from the calling application's configuration.
+result = send_email(
+    host=smtp_host,
+    port=587,
+    timeout=10,
+    sender=sender_address,
+    recipients=[recipient_address],
+    subject="Calendar update requires review",
+    body="Please review the pending calendar changes.",
+    username=smtp_username,
+    password=smtp_password,
+)
+
+if result.refused_recipients:
+    # Some recipients were refused; accepted recipients may already have mail.
+    handle_partial_refusal(result)
+```
+
+STARTTLS with certificate verification is the default; use `security="ssl"`
+for implicit TLS or explicitly choose `security="plain"` for unencrypted SMTP.
+When all recipients are refused, SMTP raises an exception. Successful server
+acceptance does not establish delivery to the mailbox, and a transport failure
+can leave the outcome unknown; callers should not blindly retry. Live SMTP and
+the calendar notification integration have not been verified.
+
 ### Core Features
 
 #### 1. Exchange Registry (Plugin System)
