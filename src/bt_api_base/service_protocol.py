@@ -32,7 +32,7 @@ import json
 import math
 import re
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from types import MappingProxyType
@@ -341,10 +341,10 @@ class WireHeader:
 
 @dataclass(frozen=True)
 class WireEnvelope:
-    """Immutable envelope containing a frozen JSON object payload."""
+    """Immutable envelope with a frozen payload omitted from its representation."""
 
     header: WireHeader
-    payload: Mapping[str, JsonValue]
+    payload: Mapping[str, JsonValue] = field(repr=False)
 
     def __post_init__(self) -> None:
         if type(self.header) is not WireHeader:
