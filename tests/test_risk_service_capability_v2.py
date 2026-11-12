@@ -163,7 +163,7 @@ def test_denial_cannot_claim_a_gateway_reservation_or_unpersisted_permit(
 
 
 @pytest.mark.parametrize("state,permit_id", [(None, None), ("DENIED", None), ("DENIED", "p-1")])
-def test_denial_retains_gateway_refusal_metadata_without_gateway_reservation(state, permit_id):
+def test_denial_retains_gateway_refusal_code_without_gateway_state(state, permit_id):
     denied = RiskOrderResult(
         "request-1",
         "DENIED",
@@ -171,13 +171,62 @@ def test_denial_retains_gateway_refusal_metadata_without_gateway_reservation(sta
         permit_id=permit_id,
         code="risk_gateway_refused",
         gateway_code="gateway_refused",
-        gateway_state="DENIED",
     )
     reply = RiskReserveReplyV2(denied)
     restored = RiskReserveReplyV2.from_mapping(reply.to_mapping())
     assert restored.result == denied
     assert restored.result.gateway_code == "gateway_refused"
-    assert restored.result.gateway_state == "DENIED"
+    assert restored.result.gateway_state is None
+
+
+@pytest.mark.parametrize(
+    "gateway_state",
+    [
+        "RESERVED",
+        "DISPATCHING",
+        "SENT",
+        "NOT_SENT",
+        "UNKNOWN",
+        "RELEASED",
+        "EXPIRED",
+        "DENIED",
+        "PENDING",
+    ],
+)
+@pytest.mark.parametrize("state,permit_id", [(None, None), ("DENIED", "p-1")])
+def test_denial_cannot_claim_any_gateway_state(gateway_state, state, permit_id):
+    denied = RiskOrderResult(
+        "request-1",
+        "DENIED",
+        state=state,
+        permit_id=permit_id,
+        code="risk_gateway_refused",
+        gateway_code="gateway_refused",
+        gateway_state=gateway_state,
+    )
+    with pytest.raises(RiskServiceProtocolError, match="RISK_V2_RESERVE_REPLY_INVALID"):
+        RiskReserveReplyV2(denied)
+    wire = RiskReserveReplyV2(
+        RiskOrderResult(
+            "request-1",
+            "DENIED",
+            state=state,
+            permit_id=permit_id,
+            code="risk_gateway_refused",
+            gateway_code="gateway_refused",
+        )
+    ).to_mapping()
+    wire["result"]["gateway_state"] = gateway_state
+    with pytest.raises(RiskServiceProtocolError, match="RISK_V2_RESERVE_REPLY_INVALID"):
+        RiskReserveReplyV2.from_mapping(wire)
+
+
+def test_unknown_may_keep_gateway_state_without_granting_capability():
+    unknown = RiskOrderResult("request-1", "UNKNOWN", state="UNKNOWN", gateway_state="RESERVED")
+    reply = RiskReserveReplyV2(unknown)
+    assert RiskReserveReplyV2.from_mapping(reply.to_mapping()) == reply
+    with pytest.raises(RiskServiceProtocolError, match="RISK_V2_RESERVE_REPLY_INVALID"):
+        RiskReserveReplyV2(unknown, CAPABILITY)
 
 
 @pytest.mark.parametrize(

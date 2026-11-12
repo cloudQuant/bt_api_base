@@ -67,6 +67,7 @@ class RiskReserveReplyV2:
                 self.result.outcome == "DENIED"
                 and (
                     self.result.reservation_id is not None
+                    or self.result.gateway_state is not None
                     or (self.result.state is None and self.result.permit_id is not None)
                 )
             )
