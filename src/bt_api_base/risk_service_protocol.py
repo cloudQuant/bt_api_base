@@ -18,7 +18,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, DecimalException, InvalidOperation
 
 from bt_api_base.market_protocol import MarketInstrumentKey
 
@@ -185,8 +185,37 @@ def _decimal(value: object, code: str, *, positive: bool) -> Decimal:
     return number
 
 
+# Bound both the coefficient and the fixed-point expansion before formatting.
+# These limits narrow accepted v1 inputs; they do not change successful bytes.
+_DECIMAL_MAX_DIGITS = 4096
+_DECIMAL_MAX_EXPONENT = 4096
+_DECIMAL_MAX_TEXT = 4096
+
+
 def _decimal_text(value: Decimal) -> str:
-    text = format(value.normalize(), "f")
+    if type(value) is not Decimal or not value.is_finite():
+        _fail("RISK_DECIMAL_ENCODING_INVALID")
+    sign, digits, exponent = value.as_tuple()
+    count = len(digits)
+    if count > _DECIMAL_MAX_DIGITS or abs(exponent) > _DECIMAL_MAX_EXPONENT:
+        _fail("RISK_DECIMAL_ENCODING_INVALID")
+    # Upper bound before normalization, including sign and decimal point.
+    point = count + exponent
+    if exponent >= 0:
+        size = sign + count + exponent
+    elif point > 0:
+        size = sign + count + 1
+    else:
+        size = sign + 2 - point + count
+    if size > _DECIMAL_MAX_TEXT:
+        _fail("RISK_DECIMAL_ENCODING_INVALID")
+    try:
+        text = format(value.normalize(), "f")
+        encoded = Decimal(text)
+        if len(text) > _DECIMAL_MAX_TEXT or not encoded.is_finite() or encoded != value:
+            _fail("RISK_DECIMAL_ENCODING_INVALID")
+    except (DecimalException, ValueError, OverflowError):
+        raise RiskServiceProtocolError("RISK_DECIMAL_ENCODING_INVALID") from None
     return text if text != "-0" else "0"
 
 
