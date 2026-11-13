@@ -57,6 +57,7 @@ def send_email(
     username: str | None = None,
     password: str | None = None,
     security: str = "starttls",
+    return_all_refused: bool = False,
 ) -> EmailSendResult:
     """Send one plain-text message using ``starttls``, ``ssl``, or ``plain``.
 
@@ -64,7 +65,10 @@ def send_email(
     ``plain`` mode is unencrypted and must be selected explicitly. Credentials
     are optional but must be supplied together. SMTP and network exceptions are
     propagated; if all recipients are refused, smtplib raises
-    ``SMTPRecipientsRefused``. The returned refusal mapping contains the SMTP
+    ``SMTPRecipientsRefused`` by default. With ``return_all_refused=True``, an
+    exception raised by the send itself becomes a refusal result only when it
+    contains exactly the requested recipients and valid 4xx/5xx replies.
+    Other exceptions continue to propagate. The returned refusal mapping contains the SMTP
     status and server response for each refused recipient. Errors closing the
     local connection do not replace the send result or an earlier exception.
     """
@@ -82,6 +86,8 @@ def send_email(
         raise ValueError("timeout must be finite and between 0 and 86400 seconds")
     if security not in ("starttls", "ssl", "plain"):
         raise ValueError("security must be 'starttls', 'ssl', or 'plain'")
+    if type(return_all_refused) is not bool:
+        raise ValueError("return_all_refused must be a bool")
     if (username is None) != (password is None):
         raise ValueError("username and password must be supplied together")
     if username is not None:
@@ -119,7 +125,25 @@ def send_email(
                 raise smtplib.SMTPHeloError(code, response)
         if username is not None:
             client.login(username, password)
-        refused = client.send_message(message, from_addr=sender, to_addrs=recipients)
+        try:
+            refused = client.send_message(message, from_addr=sender, to_addrs=recipients)
+        except smtplib.SMTPRecipientsRefused as exc:
+            refused = exc.recipients
+            if (
+                not return_all_refused
+                or type(refused) is not dict
+                or any(type(address) is not str for address in refused)
+                or set(refused) != set(recipients)
+                or any(
+                    type(reply) is not tuple
+                    or len(reply) != 2
+                    or type(reply[0]) is not int
+                    or not 400 <= reply[0] <= 599
+                    or type(reply[1]) is not bytes
+                    for reply in refused.values()
+                )
+            ):
+                raise
         return EmailSendResult(
             accepted_recipients=tuple(address for address in recipients if address not in refused),
             refused_recipients=dict(refused),

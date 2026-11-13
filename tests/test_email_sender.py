@@ -209,3 +209,70 @@ def test_import_does_not_connect(monkeypatch):
     monkeypatch.setattr(smtplib, "SMTP", fail)
     monkeypatch.setattr(smtplib, "SMTP_SSL", fail)
     importlib.reload(email_sender)
+
+def test_full_refusal_is_opt_in_and_close_error_does_not_override_result(monkeypatch):
+    client = FakeSMTP()
+    failure = smtplib.SMTPRecipientsRefused(
+        {
+            "a@example.test": (450, b"temporary"),
+            "b@example.test": (550, b"permanent"),
+        }
+    )
+    client.failure = failure
+    monkeypatch.setattr(email_sender.smtplib, "SMTP", lambda *args, **kwargs: client)
+    with pytest.raises(smtplib.SMTPRecipientsRefused) as raised:
+        send()
+    assert raised.value is failure
+
+    def close_failure():
+        raise OSError("close failure")
+
+    client.close = close_failure
+    result = send(return_all_refused=True)
+    assert result.accepted_recipients == ()
+    assert result.refused_recipients == failure.recipients
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {},
+        {"a@example.test": (550, b"refused")},
+        {"a@example.test": (550, b"refused"), "b@example.test": (250, b"accepted")},
+        {"a@example.test": (550, b"refused"), "b@example.test": (True, b"bad")},
+        {"a@example.test": (550, b"refused"), "b@example.test": (550, "not bytes")},
+        {"a@example.test": (550, b"refused"), "b@example.test": [550, b"not tuple"]},
+        {"a@example.test": (550, b"refused"), "other@example.test": (550, b"other")},
+    ],
+)
+def test_opt_in_rejects_malformed_or_incomplete_full_refusal(monkeypatch, bad):
+    client = FakeSMTP()
+    failure = smtplib.SMTPRecipientsRefused(bad)
+    client.failure = failure
+    monkeypatch.setattr(email_sender.smtplib, "SMTP", lambda *args, **kwargs: client)
+    with pytest.raises(smtplib.SMTPRecipientsRefused) as raised:
+        send(return_all_refused=True)
+    assert raised.value is failure
+    assert client.events[-1] == ("close",)
+
+
+def test_opt_in_does_not_catch_refusal_from_login(monkeypatch):
+    client = FakeSMTP()
+    failure = smtplib.SMTPRecipientsRefused(
+        {
+            "a@example.test": (550, b"refused"),
+            "b@example.test": (550, b"refused"),
+        }
+    )
+    client.failure = failure
+    monkeypatch.setattr(email_sender.smtplib, "SMTP", lambda *args, **kwargs: client)
+    with pytest.raises(smtplib.SMTPRecipientsRefused) as raised:
+        send(username="user", password="password", return_all_refused=True)
+    assert raised.value is failure
+    assert not any(event[0] == "send" for event in client.events)
+
+
+def test_refusal_opt_in_requires_bool_before_connection(transport):
+    with pytest.raises(ValueError):
+        send(return_all_refused=1)
+    assert not transport
