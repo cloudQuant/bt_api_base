@@ -73,6 +73,21 @@ def _check_decimal(value: Any, field: str, *, optional: bool = False) -> str | N
     return value
 
 
+def _decimal_split_matches(today: str, yesterday: str, quantity: str) -> bool:
+    """Compare bounded decimal strings exactly, independent of Decimal context."""
+    parts = []
+    for value in (today, yesterday, quantity):
+        negative = value.startswith("-")
+        whole, _, fraction = value.removeprefix("-").partition(".")
+        parts.append((negative, whole, fraction))
+    scale = max(len(fraction) for _, _, fraction in parts)
+    scaled = []
+    for negative, whole, fraction in parts:
+        number = int(whole + fraction + "0" * (scale - len(fraction)))
+        scaled.append(-number if negative else number)
+    return scaled[0] + scaled[1] == scaled[2]
+
+
 def _check_utc_timestamp(value: Any, field: str) -> tuple[str, datetime]:
     if type(value) is not str:
         raise TypeError(f"{field} must be an explicit UTC timestamp string")
@@ -317,7 +332,9 @@ class AccountPosition:
             if value is not None and Decimal(value) < 0:
                 raise ValueError(f"{name} must be nonnegative")
             split.append(value)
-        if None not in split and Decimal(split[0]) + Decimal(split[1]) != Decimal(quantity):
+        if split[0] is not None and split[1] is not None and not _decimal_split_matches(
+            split[0], split[1], quantity
+        ):
             raise ValueError("today_quantity + yesterday_quantity must equal quantity")
 
     def to_dict(self) -> dict[str, Any]:
