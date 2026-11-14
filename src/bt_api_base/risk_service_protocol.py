@@ -18,6 +18,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from bt_api_base.market_protocol import MarketInstrumentKey
@@ -177,6 +178,17 @@ def _ref(value: object, *, limit: int = 256) -> bool:
 
 def _optional_ref(value: object) -> bool:
     return value is None or _ref(value)
+
+
+def _trading_day(value: object) -> bool:
+    if (type(value) is not str or len(value) != 8
+            or not value.isascii() or not value.isdigit()):
+        return False
+    try:
+        date(int(value[:4]), int(value[4:6]), int(value[6:]))
+    except ValueError:
+        return False
+    return True
 
 
 def _decimal(value: object, code: str, *, positive: bool) -> Decimal:
@@ -347,11 +359,7 @@ class RiskOrderView:
         for name in ("time_in_force", "session_epoch"):
             if not _optional_ref(getattr(self, name)):
                 _fail("RISK_VIEW_INVALID")
-        if self.trading_day is not None and (
-            type(self.trading_day) is not str
-            or len(self.trading_day) != 8
-            or not self.trading_day.isdigit()
-        ):
+        if self.trading_day is not None and not _trading_day(self.trading_day):
             _fail("RISK_VIEW_INVALID")
         if (self.parent_ref is None) != (self.child_id is None):
             _fail("RISK_VIEW_INVALID")
@@ -625,7 +633,7 @@ class RiskParentView:
             )
         for name in ("created_trading_day", "valid_until_trading_day"):
             day = getattr(self, name)
-            if type(day) is not str or len(day) != 8 or not day.isdigit():
+            if not _trading_day(day):
                 _fail("RISK_PARENT_INVALID")
         if self.valid_until_trading_day < self.created_trading_day:
             _fail("RISK_PARENT_INVALID")
