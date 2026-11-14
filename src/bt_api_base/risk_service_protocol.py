@@ -139,6 +139,15 @@ OFFSETS = frozenset({"OPEN", "CLOSE", "CLOSE_TODAY", "CLOSE_YESTERDAY"})
 POSITION_SIDES = frozenset({"NET", "LONG", "SHORT"})
 ORIGINS = frozenset({"strategy", "execution"})
 
+# Bound untrusted strings before hashing while following the declared vocabulary.
+_MAX_ORIGIN_LENGTH = max(map(len, ORIGINS))
+_MAX_SIDE_LENGTH = max(map(len, SIDES))
+_MAX_POSITION_SIDE_LENGTH = max(map(len, POSITION_SIDES))
+_MAX_OFFSET_LENGTH = max(map(len, OFFSETS))
+_MAX_OUTCOME_LENGTH = max(map(len, RISK_OUTCOMES))
+_MAX_PERMIT_STATE_LENGTH = max(map(len, RISK_PERMIT_STATES))
+_MAX_REFUSAL_CODE_LENGTH = max(map(len, RISK_REFUSAL_CODES))
+
 # Shared kill switch vocabulary (the Gateway owns control state; these are names only).
 KILL_SWITCH_ACTIONS = frozenset({"FREEZE", "STOP_NEW", "DRAIN", "RESUME"})
 KILL_SWITCH_SCOPES = frozenset({"account", "strategy", "instrument"})
@@ -307,12 +316,22 @@ class RiskOrderView:
             if not _ref(getattr(self, name)):
                 _fail("RISK_VIEW_INVALID")
         if (
-            self.origin not in ORIGINS
+            type(self.origin) is not str
+            or len(self.origin) > _MAX_ORIGIN_LENGTH
+            or self.origin not in ORIGINS
+            or type(self.side) is not str
+            or len(self.side) > _MAX_SIDE_LENGTH
             or self.side not in SIDES
+            or type(self.position_side) is not str
+            or len(self.position_side) > _MAX_POSITION_SIDE_LENGTH
             or self.position_side not in POSITION_SIDES
         ):
             _fail("RISK_VIEW_INVALID")
-        if self.offset is not None and self.offset not in OFFSETS:
+        if self.offset is not None and (
+            type(self.offset) is not str
+            or len(self.offset) > _MAX_OFFSET_LENGTH
+            or self.offset not in OFFSETS
+        ):
             _fail("RISK_VIEW_INVALID")
         if type(self.instrument) is not MarketInstrumentKey:
             _fail("RISK_VIEW_INVALID")
@@ -449,11 +468,24 @@ class RiskOrderResult:
     def __post_init__(self) -> None:
         if type(self.schema_version) is not int or self.schema_version != 1:
             _fail("RISK_RESULT_INVALID")
-        if not _ref(self.request_key) or self.outcome not in RISK_OUTCOMES:
+        if (
+            not _ref(self.request_key)
+            or type(self.outcome) is not str
+            or len(self.outcome) > _MAX_OUTCOME_LENGTH
+            or self.outcome not in RISK_OUTCOMES
+        ):
             _fail("RISK_RESULT_INVALID")
-        if self.state is not None and self.state not in RISK_PERMIT_STATES:
+        if self.state is not None and (
+            type(self.state) is not str
+            or len(self.state) > _MAX_PERMIT_STATE_LENGTH
+            or self.state not in RISK_PERMIT_STATES
+        ):
             _fail("RISK_RESULT_INVALID")
-        if self.code is not None and self.code not in RISK_REFUSAL_CODES:
+        if self.code is not None and (
+            type(self.code) is not str
+            or len(self.code) > _MAX_REFUSAL_CODE_LENGTH
+            or self.code not in RISK_REFUSAL_CODES
+        ):
             _fail("RISK_RESULT_INVALID")
         if self.outcome == "DENIED" and self.code is None:
             _fail("RISK_RESULT_INVALID")
@@ -561,9 +593,20 @@ class RiskParentView:
         for name in ("account_scope", "route", "strategy_ref", "parent_ref", "quantity_unit"):
             if not _ref(getattr(self, name)):
                 _fail("RISK_PARENT_INVALID")
-        if self.side not in SIDES or self.position_side not in POSITION_SIDES:
+        if (
+            type(self.side) is not str
+            or len(self.side) > _MAX_SIDE_LENGTH
+            or self.side not in SIDES
+            or type(self.position_side) is not str
+            or len(self.position_side) > _MAX_POSITION_SIDE_LENGTH
+            or self.position_side not in POSITION_SIDES
+        ):
             _fail("RISK_PARENT_INVALID")
-        if self.offset is not None and self.offset not in OFFSETS:
+        if self.offset is not None and (
+            type(self.offset) is not str
+            or len(self.offset) > _MAX_OFFSET_LENGTH
+            or self.offset not in OFFSETS
+        ):
             _fail("RISK_PARENT_INVALID")
         if type(self.instrument) is not MarketInstrumentKey:
             _fail("RISK_PARENT_INVALID")
