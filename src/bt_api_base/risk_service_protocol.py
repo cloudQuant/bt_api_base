@@ -18,7 +18,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
-from decimal import Decimal, DecimalException, InvalidOperation
+from decimal import Decimal, InvalidOperation
 
 from bt_api_base.market_protocol import MarketInstrumentKey
 
@@ -182,7 +182,8 @@ def _optional_ref(value: object) -> bool:
 def _decimal(value: object, code: str, *, positive: bool) -> Decimal:
     if type(value) is Decimal:
         number = value
-    elif type(value) is str and value and value == value.strip():
+    elif (type(value) is str and value and len(value) <= _DECIMAL_MAX_TEXT
+          and value == value.strip()):
         try:
             number = Decimal(value)
         except InvalidOperation:
@@ -219,13 +220,14 @@ def _decimal_text(value: Decimal) -> str:
     if size > _DECIMAL_MAX_TEXT:
         _fail("RISK_DECIMAL_ENCODING_INVALID")
     try:
-        text = format(value.normalize(), "f")
-        encoded = Decimal(text)
-        if len(text) > _DECIMAL_MAX_TEXT or not encoded.is_finite() or encoded != value:
-            _fail("RISK_DECIMAL_ENCODING_INVALID")
-    except (DecimalException, ValueError, OverflowError):
+        # Decimal's fixed-point formatter preserves all digits without consulting
+        # the ambient context; normalize() would round or trap under that context.
+        text = format(value, "f")
+    except (ValueError, OverflowError):
         raise RiskServiceProtocolError("RISK_DECIMAL_ENCODING_INVALID") from None
-    return text if text != "-0" else "0"
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return "0" if value.is_zero() else text
 
 
 def canonical_risk_json(value: Mapping) -> str:

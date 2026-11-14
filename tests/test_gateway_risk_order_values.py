@@ -103,7 +103,9 @@ def test_market_and_decimal_boundaries():
     p.update(order_type="limit", price="1", quantity="12345678901234567890123456789")
     v = replace(v, order_type="LIMIT", limit_price=Decimal("1"),
                 quantity=Decimal(p["quantity"]))
-    # Existing Risk digest normalizes under the decimal context and refuses loss.
+    # Large exact values remain comparable without context-dependent rounding.
+    check(p, v)
+    p["quantity"] = "12345678901234567890123456788"
     with pytest.raises(GatewayRiskOrderValuesError):
         check(p, v)
 

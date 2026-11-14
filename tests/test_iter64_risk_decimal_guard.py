@@ -110,14 +110,17 @@ def test_distinct_precise_values_do_not_collide(factory):
     with localcontext() as context:
         context.prec = 28
         assert format(Decimal(first).normalize(), "f") == format(Decimal(second).normalize(), "f")
-        for view in (factory(first), factory(second), factory(price=first)):
-            with pytest.raises(RiskServiceProtocolError, match="^RISK_DECIMAL_ENCODING_INVALID$"):
-                view.digest()
+        a, b = factory(first), factory(second)
+        assert a.digest() != b.digest()
+        assert type(a).from_mapping(a.to_mapping()) == a
+        assert factory(price=first).to_mapping()["limit_price"] == first
+        digests = (a.digest(), b.digest())
     with localcontext() as context:
         context.prec = 40
         a, b = factory(first), factory(second)
         assert a.digest() != b.digest()
         assert type(a).from_mapping(a.to_mapping()) == a
+        assert (a.digest(), b.digest()) == digests
 
 
 @pytest.mark.parametrize("trap", [False, True])
@@ -126,13 +129,12 @@ def test_context_rounding_and_traps_are_finite(trap):
         context.prec = 3
         context.traps[Inexact] = trap
         for view in (order("1.234"), parent(price="1.234")):
-            with pytest.raises(RiskServiceProtocolError, match="^RISK_DECIMAL_ENCODING_INVALID$"):
-                view.to_mapping()
+            mapping = view.to_mapping()
+            assert "1.234" in (mapping.get("quantity"), mapping["limit_price"])
     with localcontext() as context:
         context.prec = 3
         context.traps[Rounded] = True
-        with pytest.raises(RiskServiceProtocolError, match="^RISK_DECIMAL_ENCODING_INVALID$"):
-            order("1.2300").to_mapping()
+        assert order("1.2300").to_mapping()["quantity"] == "1.23"
 
 
 @pytest.mark.parametrize("trap", [False, True])
@@ -143,8 +145,7 @@ def test_context_overflow_and_underflow(trap, value, signal):
         context.Emax = 2
         context.Emin = -2
         context.traps[signal] = trap
-        with pytest.raises(RiskServiceProtocolError, match="^RISK_DECIMAL_ENCODING_INVALID$"):
-            parent(value).to_mapping()
+        assert parent(value).to_mapping()["total_quantity"] == {"1E+3": "1000", "1E-5": "0.00001"}[value]
 
 
 @pytest.mark.parametrize(
@@ -164,7 +165,7 @@ def test_size_bound_and_nonfinite_defense():
             _decimal_text(value)
 
 
-def test_serialization_uses_each_threads_context():
+def test_serialization_is_independent_of_each_threads_context():
     view = order("1.23456789")
     barrier = Barrier(2)
 
@@ -179,4 +180,4 @@ def test_serialization_uses_each_threads_context():
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         results = list(executor.map(serialize, (4, 12)))
-    assert results == ["RISK_DECIMAL_ENCODING_INVALID", "1.23456789"]
+    assert results == ["1.23456789", "1.23456789"]
