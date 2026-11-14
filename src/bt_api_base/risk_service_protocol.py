@@ -707,6 +707,104 @@ class RiskParentView:
         )
 
 
+CONTROL_SCOPE_SCHEMA = "bt_api.control_scope"
+CONTROL_SCOPE_VERSION = 2
+
+
+@dataclass(frozen=True, slots=True)
+class ControlScopeV2:
+    """Account or complete-instrument control scope, independent of v1 commands.
+
+    The account reference and every instrument field are claims, not proof of
+    account ownership, provider origin, or authority. Consumers must bind them
+    to the authenticated account and grants before acting. No v1 scope string
+    or persisted control state can be inferred or migrated from this contract.
+    """
+
+    account_scope: str
+    kind: str
+    schema_version: int
+    instrument: MarketInstrumentKey | None = None
+
+    def __post_init__(self) -> None:
+        if type(self.schema_version) is not int or self.schema_version != CONTROL_SCOPE_VERSION:
+            _fail("CONTROL_SCOPE_SCHEMA_UNSUPPORTED")
+        if not _ref(self.account_scope) or type(self.kind) is not str:
+            _fail("CONTROL_SCOPE_INVALID")
+        if self.kind == "account":
+            if self.instrument is not None:
+                _fail("CONTROL_SCOPE_INVALID")
+        elif self.kind == "instrument":
+            if type(self.instrument) is not MarketInstrumentKey:
+                _fail("CONTROL_SCOPE_INVALID")
+        else:
+            _fail("CONTROL_SCOPE_INVALID")
+
+    def to_mapping(self) -> dict:
+        value = {
+            "schema": CONTROL_SCOPE_SCHEMA,
+            "schema_version": self.schema_version,
+            "kind": self.kind,
+            "account_scope": self.account_scope,
+        }
+        if self.kind == "instrument":
+            value["instrument"] = self.instrument.to_dict()
+        return value
+
+    @classmethod
+    def from_mapping(cls, value: object) -> ControlScopeV2:
+        if type(value) is not dict or any(type(key) is not str for key in value):
+            _fail("CONTROL_SCOPE_INVALID")
+        if type(value.get("schema")) is not str or value["schema"] != CONTROL_SCOPE_SCHEMA:
+            _fail("CONTROL_SCOPE_SCHEMA_UNSUPPORTED")
+        if (
+            type(value.get("schema_version")) is not int
+            or value["schema_version"] != CONTROL_SCOPE_VERSION
+        ):
+            _fail("CONTROL_SCOPE_SCHEMA_UNSUPPORTED")
+        kind = value.get("kind")
+        fields = {"schema", "schema_version", "kind", "account_scope"}
+        if kind == "instrument":
+            fields.add("instrument")
+        if set(value) != fields or type(kind) is not str or kind not in {"account", "instrument"}:
+            _fail("CONTROL_SCOPE_INVALID")
+        instrument = None
+        if kind == "instrument":
+            if type(value["instrument"]) is not dict or any(
+                type(key) is not str for key in value["instrument"]
+            ):
+                _fail("CONTROL_SCOPE_INVALID")
+            instrument = _instrument_from(value["instrument"])
+        return cls(value["account_scope"], kind, value["schema_version"], instrument)
+
+    def canonical_bytes(self) -> bytes:
+        """UTF-8 JSON, sorted keys, no whitespace; strings are not normalized."""
+        return canonical_risk_json(self.to_mapping()).encode("utf-8")
+
+    @classmethod
+    def from_canonical_bytes(cls, raw: object) -> ControlScopeV2:
+        """Decode only the exact canonical representation, rejecting duplicate keys."""
+        if type(raw) is not bytes or len(raw) > 4096:
+            _fail("CONTROL_SCOPE_INVALID")
+
+        def unique_pairs(pairs: list[tuple[str, object]]) -> dict:
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("duplicate field")
+                result[key] = value
+            return result
+
+        try:
+            decoded = json.loads(raw.decode("utf-8", errors="strict"), object_pairs_hook=unique_pairs)
+        except (UnicodeError, ValueError, RecursionError):
+            _fail("CONTROL_SCOPE_INVALID")
+        scope = cls.from_mapping(decoded)
+        if scope.canonical_bytes() != raw:
+            _fail("CONTROL_SCOPE_INVALID")
+        return scope
+
+
 @dataclass(frozen=True, slots=True)
 class KillSwitchCommand:
     """A control request in the shared vocabulary; the Gateway decides and holds state.
@@ -752,6 +850,9 @@ class KillSwitchCommand:
 
 
 __all__ = [
+    "CONTROL_SCOPE_SCHEMA",
+    "CONTROL_SCOPE_VERSION",
+    "ControlScopeV2",
     "KILL_SWITCH_ACTIONS",
     "KILL_SWITCH_RESULTS",
     "KILL_SWITCH_SCOPES",
