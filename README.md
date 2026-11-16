@@ -46,6 +46,12 @@ set and interval bounds are explicit; UNKNOWN cannot claim a covered interval.
 These DTOs do not authenticate a producer and have no wire codec. Their monotonic
 timestamps must not be compared across processes or treated as UTC/calendar time.
 
+The separate `market_recovery_journal_event` codec carries bounded, detached
+recovery journal records, including explicit unknown continuity markers and
+local UTC qualification claims. It validates record structure, not producer
+identity, clock authenticity, continuous coverage or trading permission. The
+64 KiB payload bound does not replace a receiver's full-envelope and node limits.
+
 The working-tree `order_provenance_projection` projects finite source fields and a digest using SDK-selected field contracts; it does not authenticate the provider. Source and distribution remain unaccepted.
 
 The working-tree `execution_identity_projection` also compares explicit ledger order identity fields using caller-supplied provider unit resolution; it does not establish source authenticity. Behavior and distribution remain unaccepted.
