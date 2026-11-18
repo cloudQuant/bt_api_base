@@ -24,21 +24,34 @@ from decimal import Decimal, InvalidOperation
 from bt_api_base.market_protocol import MarketInstrumentKey
 
 RISK_SERVICE_SCHEMA = "bt_api.risk_service.v1"
+RISK_SERVICE_V2_SCHEMA = "bt_api.risk_service.v2"
 RISK_SERVICE_PORT = "service.risk_order"
 RISK_ADMIN_PORT = "service.risk_admin"
 
 # Operations a strategy or an authorized execution delegate may call.
+RISK_ORDER_V2_OPERATIONS = frozenset(
+    {
+        "risk.order.reserve.v2",
+        "risk.order.dispatch.v2",
+    }
+)
+RISK_PARENT_OPERATIONS = frozenset(
+    {
+        "risk.parent.reserve",
+        "risk.parent.release",
+        "risk.parent.status",
+    }
+)
 RISK_ORDER_OPERATIONS = frozenset(
     {
         "risk.order.reserve",
         "risk.order.dispatch",
         "risk.order.release",
         "risk.order.status",
-        "risk.parent.reserve",
-        "risk.parent.release",
-        "risk.parent.status",
         "risk.status",
     }
+    | RISK_ORDER_V2_OPERATIONS
+    | RISK_PARENT_OPERATIONS
 )
 # Operations an authorized operator may call (read and authorized changes).
 RISK_ADMIN_OPERATIONS = frozenset(
@@ -596,9 +609,10 @@ class RiskParentView:
     created_trading_day: str
     valid_until_trading_day: str
     schema_version: int = 1
+    valid_until_ns: int | None = None
 
     def __post_init__(self) -> None:
-        if type(self.schema_version) is not int or self.schema_version != 1:
+        if type(self.schema_version) is not int or self.schema_version not in (1, 2):
             _fail("RISK_PARENT_INVALID")
         for name in ("account_scope", "route", "strategy_ref", "parent_ref", "quantity_unit"):
             if not _ref(getattr(self, name)):
@@ -618,6 +632,16 @@ class RiskParentView:
             or self.offset not in OFFSETS
         ):
             _fail("RISK_PARENT_INVALID")
+        if self.schema_version == 1:
+            if self.valid_until_ns is not None:
+                _fail("RISK_PARENT_INVALID")
+        else:
+            if (
+                self.offset is None
+                or type(self.valid_until_ns) is not int
+                or not 0 < self.valid_until_ns <= 2**63 - 1
+            ):
+                _fail("RISK_PARENT_INVALID")
         if type(self.instrument) is not MarketInstrumentKey:
             _fail("RISK_PARENT_INVALID")
         object.__setattr__(
@@ -639,8 +663,9 @@ class RiskParentView:
             _fail("RISK_PARENT_INVALID")
 
     def to_mapping(self) -> dict:
-        return {
-            "schema": RISK_SERVICE_SCHEMA,
+        schema = RISK_SERVICE_V2_SCHEMA if self.schema_version == 2 else RISK_SERVICE_SCHEMA
+        mapping = {
+            "schema": schema,
             "schema_version": self.schema_version,
             "account_scope": self.account_scope,
             "route": self.route,
@@ -656,13 +681,16 @@ class RiskParentView:
             "created_trading_day": self.created_trading_day,
             "valid_until_trading_day": self.valid_until_trading_day,
         }
+        if self.schema_version == 2:
+            mapping["valid_until_ns"] = self.valid_until_ns
+        return mapping
 
     def digest(self) -> str:
         return risk_digest(self.to_mapping())
 
     @classmethod
     def from_mapping(cls, value: Mapping) -> RiskParentView:
-        expected = {
+        base_fields = {
             "schema",
             "schema_version",
             "account_scope",
@@ -679,11 +707,19 @@ class RiskParentView:
             "created_trading_day",
             "valid_until_trading_day",
         }
-        if (
-            type(value) is not dict
-            or set(value) != expected
-            or value.get("schema") != RISK_SERVICE_SCHEMA
-        ):
+        if type(value) is not dict:
+            _fail("RISK_PARENT_INVALID")
+        schema_version = value.get("schema_version")
+        schema = value.get("schema")
+        if schema_version == 1:
+            if set(value) != base_fields or schema != RISK_SERVICE_SCHEMA:
+                _fail("RISK_PARENT_INVALID")
+            valid_until_ns = None
+        elif schema_version == 2:
+            if set(value) != base_fields | {"valid_until_ns"} or schema != RISK_SERVICE_V2_SCHEMA:
+                _fail("RISK_PARENT_INVALID")
+            valid_until_ns = value["valid_until_ns"]
+        else:
             _fail("RISK_PARENT_INVALID")
         if type(value["total_quantity"]) is not str or (
             value["limit_price"] is not None and type(value["limit_price"]) is not str
@@ -703,7 +739,8 @@ class RiskParentView:
             limit_price=value["limit_price"],
             created_trading_day=value["created_trading_day"],
             valid_until_trading_day=value["valid_until_trading_day"],
-            schema_version=value["schema_version"],
+            schema_version=schema_version,
+            valid_until_ns=valid_until_ns,
         )
 
 
@@ -863,11 +900,14 @@ __all__ = [
     "RISK_ADMIN_OPERATIONS",
     "RISK_ADMIN_PORT",
     "RISK_ORDER_OPERATIONS",
+    "RISK_ORDER_V2_OPERATIONS",
     "RISK_OUTCOMES",
+    "RISK_PARENT_OPERATIONS",
     "RISK_PERMIT_STATES",
     "RISK_REFUSAL_CODES",
     "RISK_SERVICE_PORT",
     "RISK_SERVICE_SCHEMA",
+    "RISK_SERVICE_V2_SCHEMA",
     "RiskOrderResult",
     "RiskOrderView",
     "RiskParentView",

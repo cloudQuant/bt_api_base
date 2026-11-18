@@ -472,13 +472,27 @@ def _normalize_tick_fields(v: dict[str, Any]) -> None:
             or v["receive_clock_error_ms"] is None
         ):
             raise MarketTickContractError("MARKET_TICK_FRESHNESS_INVALID")
-    if v["execution_eligible"] and (
-        v["quality_contract_ref"] is None
-        or status is not MarketFreshnessStatus.FRESH
-        or source_quality is not MarketClockQuality.VERIFIED
-        or receive_quality is not MarketClockQuality.VERIFIED
-    ):
-        raise MarketTickContractError("MARKET_TICK_FRESHNESS_INVALID")
+    if v["execution_eligible"]:
+        contract_ref = v["quality_contract_ref"]
+        # Explicit opt-in mark only: the SDK may admit a STALE event time for
+        # trading (e.g. a 7x24 replay feed) while still reporting it STALE.
+        # The stale status and its reasons stay on the payload, the contract
+        # ref carries the audit mark, and the clocks must still be VERIFIED.
+        explicitly_stale_allowed = (
+            status is MarketFreshnessStatus.STALE
+            and type(contract_ref) is str
+            and ":allow_stale=1" in contract_ref
+        )
+        if (
+            contract_ref is None
+            or (
+                status is not MarketFreshnessStatus.FRESH
+                and not explicitly_stale_allowed
+            )
+            or source_quality is not MarketClockQuality.VERIFIED
+            or receive_quality is not MarketClockQuality.VERIFIED
+        ):
+            raise MarketTickContractError("MARKET_TICK_FRESHNESS_INVALID")
     v["freshness_reason_codes"] = reasons
     raw_flags = v["quality_flags"]
     if type(raw_flags) not in (tuple, list):
